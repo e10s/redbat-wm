@@ -39,7 +39,7 @@ void main()
         {
         case XCB_MAP_REQUEST:
             infof("XCB_MAP_REQUEST %s", eventType);
-            // Do something
+            onMapRequest(connection, cast(xcb_map_request_event_t*) event);
             break;
         case XCB_CONFIGURE_REQUEST:
             infof("XCB_CONFIGURE_REQUEST %s", eventType);
@@ -58,6 +58,12 @@ void main()
 
         free(event);
     }
+}
+
+void onMapRequest(xcb_connection_t* connection, xcb_map_request_event_t* event)
+{
+    xcb_map_window(connection, event.window);
+    xcb_flush(connection);
 }
 
 xcb_screen_t* screenOfDisplay(xcb_connection_t* connection, int screen)
