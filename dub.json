@@ -1,0 +1,12 @@
+{
+	"description": "Something like a window manager",
+	"dependencies": {
+		"xcb-d": "~>2.1.1"
+	},
+	"authors": [
+		"Kazuya Takahashi"
+	],
+	"copyright": "Copyright © 2018, Kazuya Takahashi",
+	"license": "MIT",
+	"name": "redbat-wm"
+}
