@@ -24,6 +24,40 @@ void main()
     xcb_flush(connection);
 
     infof("Successfully obtained root window of %#x", rootWindow);
+
+    while (true)
+    {
+        auto event = xcb_wait_for_event(connection);
+        if (event is null)
+        {
+            error("I/O error");
+            break;
+        }
+
+        immutable eventType = event.response_type & ~0x80;
+        switch (eventType)
+        {
+        case XCB_MAP_REQUEST:
+            infof("XCB_MAP_REQUEST %s", eventType);
+            // Do something
+            break;
+        case XCB_CONFIGURE_REQUEST:
+            infof("XCB_CONFIGURE_REQUEST %s", eventType);
+            // Do something
+            break;
+        case XCB_CIRCULATE_REQUEST:
+            infof("XCB_CIRCULATE_REQUEST %s", eventType);
+            // Do something
+            break;
+        default:
+            warningf("Unknown event: %s", eventType);
+            break;
+        }
+
+        import core.stdc.stdlib : free;
+
+        free(event);
+    }
 }
 
 xcb_screen_t* screenOfDisplay(xcb_connection_t* connection, int screen)
