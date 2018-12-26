@@ -39,11 +39,11 @@ void main()
         {
         case XCB_MAP_REQUEST:
             infof("XCB_MAP_REQUEST %s", eventType);
-            onMapRequest(connection, cast(xcb_map_request_event_t*) event);
+            onMapRequest(connection, screen, cast(xcb_map_request_event_t*) event);
             break;
         case XCB_CONFIGURE_REQUEST:
             infof("XCB_CONFIGURE_REQUEST %s", eventType);
-            onConfigureRequest(connection, cast(xcb_configure_request_event_t*) event);
+            onConfigureRequest(connection, screen, cast(xcb_configure_request_event_t*) event);
             break;
         case XCB_CIRCULATE_REQUEST:
             infof("XCB_CIRCULATE_REQUEST %s", eventType);
@@ -60,15 +60,34 @@ void main()
     }
 }
 
-void onMapRequest(xcb_connection_t* connection, xcb_map_request_event_t* event)
+xcb_window_t createFrame(xcb_connection_t* connection, xcb_screen_t* screen, short x, short y, ushort width, ushort height)
 {
+    auto frame = xcb_generate_id(connection);
+    xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, screen.root, x, y, width, height, 3,
+            XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, 0, null);
+    immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
+    xcb_change_window_attributes_checked(connection, frame, XCB_CW_EVENT_MASK, &mask);
+    xcb_flush(connection);
+    return frame;
+}
+
+void onMapRequest(xcb_connection_t* connection, xcb_screen_t* screen, xcb_map_request_event_t* event)
+{
+    auto geo = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, event.window), null);
+    auto frame = createFrame(connection, screen, geo.x, geo.y, cast(ushort)(geo.width + geo.border_width * 2),
+            cast(ushort)(geo.height + geo.border_width * 2));
+    import core.stdc.stdlib : free;
+
+    free(geo);
+    xcb_reparent_window(connection, event.window, frame, 0, 0);
+    xcb_map_window(connection, frame);
     xcb_map_window(connection, event.window);
     xcb_flush(connection);
 }
 
-void onConfigureRequest(xcb_connection_t* connection, xcb_configure_request_event_t* event)
+void onConfigureRequest(xcb_connection_t* connection, xcb_screen_t* screen, xcb_configure_request_event_t* event)
 {
-    infof("xy = (%s, %s), wh = (%s, %s)", event.x, event.y, event.width, event.height);
+    infof("pw = (%#x, %#x), xy = (%s, %s), wh = (%s, %s)", event.parent, event.window, event.x, event.y, event.width, event.height);
     uint[] values;
 
     // Set values in this order!!
@@ -101,7 +120,25 @@ void onConfigureRequest(xcb_connection_t* connection, xcb_configure_request_even
         values ~= event.stack_mode;
     }
 
-    xcb_configure_window(connection, event.window, event.value_mask, values.ptr);
+    size_t popCount;
+    if (event.parent != screen.root)
+    { // event for frame
+        xcb_configure_window(connection, event.parent, event.value_mask, values.ptr);
+
+        // No need to move the child within its frame
+        if (event.value_mask & XCB_CONFIG_WINDOW_X)
+        {
+            event.value_mask |= ~XCB_CONFIG_WINDOW_X;
+            popCount++;
+        }
+        if (event.value_mask & XCB_CONFIG_WINDOW_Y)
+        {
+            event.value_mask |= ~XCB_CONFIG_WINDOW_Y;
+            popCount++;
+        }
+    }
+    xcb_configure_window(connection, event.window, event.value_mask, values[popCount .. $].ptr);
+
     xcb_flush(connection);
 }
 
