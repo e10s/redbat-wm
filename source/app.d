@@ -43,7 +43,7 @@ void main()
             break;
         case XCB_CONFIGURE_REQUEST:
             infof("XCB_CONFIGURE_REQUEST %s", eventType);
-            // Do something
+            onConfigureRequest(connection, cast(xcb_configure_request_event_t*) event);
             break;
         case XCB_CIRCULATE_REQUEST:
             infof("XCB_CIRCULATE_REQUEST %s", eventType);
@@ -63,6 +63,45 @@ void main()
 void onMapRequest(xcb_connection_t* connection, xcb_map_request_event_t* event)
 {
     xcb_map_window(connection, event.window);
+    xcb_flush(connection);
+}
+
+void onConfigureRequest(xcb_connection_t* connection, xcb_configure_request_event_t* event)
+{
+    infof("xy = (%s, %s), wh = (%s, %s)", event.x, event.y, event.width, event.height);
+    uint[] values;
+
+    // Set values in this order!!
+    if (event.value_mask & XCB_CONFIG_WINDOW_X)
+    {
+        values ~= event.x;
+    }
+    if (event.value_mask & XCB_CONFIG_WINDOW_Y)
+    {
+        values ~= event.y;
+    }
+    if (event.value_mask & XCB_CONFIG_WINDOW_WIDTH)
+    {
+        values ~= event.width;
+    }
+    if (event.value_mask & XCB_CONFIG_WINDOW_HEIGHT)
+    {
+        values ~= event.height;
+    }
+    if (event.value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
+    {
+        values ~= event.border_width;
+    }
+    if (event.value_mask & XCB_CONFIG_WINDOW_SIBLING)
+    {
+        values ~= event.sibling;
+    }
+    if (event.value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
+    {
+        values ~= event.stack_mode;
+    }
+
+    xcb_configure_window(connection, event.window, event.value_mask, values.ptr);
     xcb_flush(connection);
 }
 
