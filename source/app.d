@@ -7,6 +7,7 @@ class Redbat
     xcb_connection_t* connection;
     xcb_screen_t* screen;
     xcb_window_t rootWindow;
+    xcb_window_t[xcb_window_t] frameOf;
 
     this()
     {
@@ -47,6 +48,10 @@ class Redbat
             immutable eventType = event.response_type & ~0x80;
             switch (eventType)
             {
+            case XCB_UNMAP_NOTIFY:
+                infof("XCB_UNMAP_NOTIFY %s", eventType);
+                onUnmapNotify(cast(xcb_unmap_notify_event_t*) event);
+                break;
             case XCB_MAP_REQUEST:
                 infof("XCB_MAP_REQUEST %s", eventType);
                 onMapRequest(cast(xcb_map_request_event_t*) event);
@@ -70,12 +75,40 @@ class Redbat
         }
     }
 
+    void onUnmapNotify(xcb_unmap_notify_event_t* event)
+    {
+        auto frame_p = event.window in frameOf;
+        if (frame_p is null)
+        {
+            infof("unmap %#x, unmanaged", event.window);
+            return;
+        }
+
+        immutable frame = *frame_p;
+        infof("unmap %#x, frame %#x", event.window, frame);
+
+        short frameX, frameY;
+        const reply = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, frame), null);
+        if (reply !is null)
+        {
+            frameX = reply.x;
+            frameY = reply.y;
+            infof("Frame to be removed is at (%s, %s)", frameX, frameY);
+        }
+        xcb_reparent_window(connection, event.window, rootWindow, frameX, frameY);
+        xcb_destroy_window(connection, frame);
+        infof("destroy frame %#x", frame);
+        xcb_flush(connection);
+
+        frameOf.remove(event.window);
+    }
+
     xcb_window_t createFrame(short x, short y, ushort width, ushort height)
     {
         auto frame = xcb_generate_id(connection);
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, rootWindow, x, y, width, height, 3,
                 XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, 0, null);
-        immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
+        immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
         xcb_change_window_attributes_checked(connection, frame, XCB_CW_EVENT_MASK, &mask);
         xcb_flush(connection);
         return frame;
@@ -93,6 +126,8 @@ class Redbat
         xcb_map_window(connection, frame);
         xcb_map_window(connection, event.window);
         xcb_flush(connection);
+
+        frameOf[event.window] = frame;
     }
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
