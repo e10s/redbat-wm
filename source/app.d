@@ -96,6 +96,7 @@ class Redbat
             infof("Frame to be removed is at (%s, %s)", frameX, frameY);
         }
         xcb_reparent_window(connection, event.window, rootWindow, frameX, frameY);
+        xcb_change_save_set(connection, XCB_SET_MODE_DELETE, event.window);
         xcb_destroy_window(connection, frame);
         infof("destroy frame %#x", frame);
         xcb_flush(connection);
@@ -122,6 +123,7 @@ class Redbat
         import core.stdc.stdlib : free;
 
         free(geo);
+        xcb_change_save_set(connection, XCB_SET_MODE_INSERT, event.window);
         xcb_reparent_window(connection, event.window, frame, 0, 0);
         xcb_map_window(connection, frame);
         xcb_map_window(connection, event.window);
