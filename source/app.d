@@ -36,6 +36,8 @@ class Redbat
 
         infof("Successfully obtained root window of %#x", rootWindow);
 
+        manageChildrenOfRoot();
+
         while (true)
         {
             auto event = xcb_wait_for_event(connection);
@@ -73,6 +75,42 @@ class Redbat
 
             free(event);
         }
+    }
+
+    void manageChildrenOfRoot()
+    {
+        auto reply = xcb_query_tree_reply(connection, xcb_query_tree(connection, rootWindow), null);
+        if (reply is null)
+        {
+            error("Cannot get children of root");
+            return;
+        }
+        const children = xcb_query_tree_children(reply);
+
+        import core.stdc.stdlib : free;
+
+        foreach (i, child; children[0 .. xcb_query_tree_children_length(reply)])
+        {
+            auto attr = xcb_get_window_attributes_reply(connection, xcb_get_window_attributes(connection, child), null);
+            if (attr is null)
+            {
+                errorf("Cannot get attributes of %#x", child);
+                continue;
+            }
+            scope (exit)
+            {
+                free(attr);
+            }
+            if (attr.map_state != XCB_MAP_STATE_VIEWABLE || attr.override_redirect)
+            {
+                continue;
+            }
+
+            infof("%#x", child);
+            frameOf[child] = applyFrame(child);
+        }
+
+        free(reply);
     }
 
     void onUnmapNotify(xcb_unmap_notify_event_t* event)
@@ -115,21 +153,26 @@ class Redbat
         return frame;
     }
 
-    void onMapRequest(xcb_map_request_event_t* event)
+    xcb_window_t applyFrame(xcb_window_t window)
     {
-        auto geo = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, event.window), null);
+        auto geo = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, window), null);
         auto frame = createFrame(geo.x, geo.y, cast(ushort)(geo.width + geo.border_width * 2),
                 cast(ushort)(geo.height + geo.border_width * 2));
         import core.stdc.stdlib : free;
 
         free(geo);
-        xcb_change_save_set(connection, XCB_SET_MODE_INSERT, event.window);
-        xcb_reparent_window(connection, event.window, frame, 0, 0);
+        xcb_change_save_set(connection, XCB_SET_MODE_INSERT, window);
+        xcb_reparent_window(connection, window, frame, 0, 0);
         xcb_map_window(connection, frame);
-        xcb_map_window(connection, event.window);
+        xcb_map_window(connection, window);
         xcb_flush(connection);
 
-        frameOf[event.window] = frame;
+        return frame;
+    }
+
+    void onMapRequest(xcb_map_request_event_t* event)
+    {
+        frameOf[event.window] = applyFrame(event.window);
     }
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
