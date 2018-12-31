@@ -107,6 +107,33 @@ class Redbat
         }
     }
 
+    struct Geometry
+    {
+        short x;
+        short y;
+        ushort width;
+        ushort height;
+        ushort border_width;
+    }
+
+    auto getGeometry(xcb_drawable_t window)
+    {
+        Geometry geo;
+        auto geo_p = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, window), null);
+        if (geo_p !is null)
+        {
+            geo.x = geo_p.x;
+            geo.y = geo_p.y;
+            geo.width = geo_p.width;
+            geo.height = geo_p.height;
+            geo.border_width = geo_p.border_width;
+            import core.stdc.stdlib : free;
+
+            free(geo_p);
+        }
+        return geo;
+    }
+
     void manageChildrenOfRoot()
     {
         auto reply = xcb_query_tree_reply(connection, xcb_query_tree(connection, rootWindow), null);
@@ -146,12 +173,9 @@ class Redbat
     void onExpose(xcb_expose_event_t* event)
     {
         // XXX: assume event.window to be titlebar
-        auto geo = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, event.window), null);
+        immutable geo = getGeometry(event.window);
         immutable margin = ushort(3);
         auto rect = xcb_rectangle_t(margin, margin, cast(ushort)(geo.width - margin * 2), cast(ushort)(geo.height - margin * 2));
-        import core.stdc.stdlib : free;
-
-        free(geo);
         xcb_poly_fill_rectangle(connection, event.window, titlebarGC, 1, &rect);
     }
 
@@ -182,15 +206,10 @@ class Redbat
         immutable frame = *frame_p;
         infof("unmap %#x, frame %#x", event.window, frame);
 
-        short frameX, frameY;
-        const reply = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, frame), null);
-        if (reply !is null)
-        {
-            frameX = reply.x;
-            frameY = reply.y;
-            infof("Frame to be removed is at (%s, %s)", frameX, frameY);
-        }
-        xcb_reparent_window(connection, event.window, rootWindow, frameX, frameY);
+        immutable frameGeo = getGeometry(frame);
+        infof("Frame to be removed is at (%s, %s)", frameGeo.x, frameGeo.y);
+
+        xcb_reparent_window(connection, event.window, rootWindow, frameGeo.x, frameGeo.y);
         xcb_change_save_set(connection, XCB_SET_MODE_DELETE, event.window);
         xcb_destroy_window(connection, frame);
         infof("destroy frame %#x", frame);
@@ -226,7 +245,7 @@ class Redbat
     xcb_window_t applyFrame(xcb_window_t window)
     {
         immutable tbHeight = 30;
-        auto geo = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, window), null);
+        immutable geo = getGeometry(window);
         auto frame = createFrame(geo.x, geo.y, cast(ushort)(geo.width + geo.border_width * 2),
                 cast(ushort)(tbHeight + geo.height + geo.border_width * 2));
         auto titlebar = createTitlebar(frame, geo.width, tbHeight);
@@ -238,9 +257,7 @@ class Redbat
                 cast(uint) frameName.length, frameName.ptr);
         xcb_change_property(connection, XCB_PROP_MODE_APPEND, titlebar, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
                 cast(uint) titlebarName.length, titlebarName.ptr);
-        import core.stdc.stdlib : free;
 
-        free(geo);
         xcb_change_save_set(connection, XCB_SET_MODE_INSERT, window);
         xcb_reparent_window(connection, window, frame, 0, tbHeight);
         xcb_map_window(connection, frame);
