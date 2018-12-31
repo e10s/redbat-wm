@@ -8,6 +8,7 @@ class Redbat
     xcb_screen_t* screen;
     xcb_window_t rootWindow;
     xcb_window_t[xcb_window_t] frameOf;
+    xcb_gcontext_t titlebarGC;
 
     this()
     {
@@ -19,10 +20,22 @@ class Redbat
         enforce(screen !is null, "Screen is null");
 
         rootWindow = screen.root;
+
+        titlebarGC = xcb_generate_id(connection);
+        immutable fgColor = "DeepPink";
+        auto reply = xcb_alloc_named_color_reply(connection, xcb_alloc_named_color(connection, screen.default_colormap,
+                cast(ushort) fgColor.length, fgColor.ptr), null);
+        immutable fgPixel = reply is null ? screen.black_pixel : reply.pixel;
+        uint[] valuesGC = [fgPixel, 0];
+        import core.stdc.stdlib : free;
+
+        free(reply);
+        xcb_create_gc(connection, titlebarGC, rootWindow, XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES, valuesGC.ptr);
     }
 
     ~this()
     {
+        xcb_free_gc(connection, titlebarGC); // XXX: required?
         xcb_disconnect(connection);
     }
 
@@ -50,6 +63,23 @@ class Redbat
             immutable eventType = event.response_type & ~0x80;
             switch (eventType)
             {
+            case XCB_EXPOSE:
+                infof("XCB_EXPOSE %s", eventType);
+                onExpose(cast(xcb_expose_event_t*) event);
+                xcb_flush(connection);
+                break;
+            case XCB_BUTTON_PRESS:
+                infof("XCB_BUTTON_PRESS %s", eventType);
+                onButtonPress(cast(xcb_button_press_event_t*) event);
+                break;
+            case XCB_BUTTON_RELEASE:
+                infof("XCB_BUTTON_RELEASE %s", eventType);
+                onButtonRelease(cast(xcb_button_release_event_t*) event);
+                break;
+            case XCB_MOTION_NOTIFY:
+                infof("XCB_MOTION_NOTIFY %s", eventType);
+                onMotionNotify(cast(xcb_motion_notify_event_t*) event);
+                break;
             case XCB_UNMAP_NOTIFY:
                 infof("XCB_UNMAP_NOTIFY %s", eventType);
                 onUnmapNotify(cast(xcb_unmap_notify_event_t*) event);
@@ -113,6 +143,33 @@ class Redbat
         free(reply);
     }
 
+    void onExpose(xcb_expose_event_t* event)
+    {
+        // XXX: assume event.window to be titlebar
+        auto geo = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, event.window), null);
+        immutable margin = ushort(3);
+        auto rect = xcb_rectangle_t(margin, margin, cast(ushort)(geo.width - margin * 2), cast(ushort)(geo.height - margin * 2));
+        import core.stdc.stdlib : free;
+
+        free(geo);
+        xcb_poly_fill_rectangle(connection, event.window, titlebarGC, 1, &rect);
+    }
+
+    void onButtonPress(xcb_button_press_event_t* event)
+    {
+        info(*event);
+    }
+
+    void onButtonRelease(xcb_button_release_event_t* event)
+    {
+        info(*event);
+    }
+
+    void onMotionNotify(xcb_motion_notify_event_t* event)
+    {
+        info(*event);
+    }
+
     void onUnmapNotify(xcb_unmap_notify_event_t* event)
     {
         auto frame_p = event.window in frameOf;
@@ -142,6 +199,19 @@ class Redbat
         frameOf.remove(event.window);
     }
 
+    xcb_window_t createTitlebar(xcb_window_t frame, ushort width, ushort height)
+    {
+        auto titlebar = xcb_generate_id(connection);
+        uint[] values = [
+            screen.white_pixel,
+            XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_EXPOSURE
+        ];
+        xcb_create_window(connection, XCB_COPY_FROM_PARENT, titlebar, frame, 0, 0, width, height, 0,
+                XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK, values.ptr);
+        xcb_flush(connection);
+        return titlebar;
+    }
+
     xcb_window_t createFrame(short x, short y, ushort width, ushort height)
     {
         auto frame = xcb_generate_id(connection);
@@ -155,15 +225,26 @@ class Redbat
 
     xcb_window_t applyFrame(xcb_window_t window)
     {
+        immutable tbHeight = 30;
         auto geo = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, window), null);
         auto frame = createFrame(geo.x, geo.y, cast(ushort)(geo.width + geo.border_width * 2),
-                cast(ushort)(geo.height + geo.border_width * 2));
+                cast(ushort)(tbHeight + geo.height + geo.border_width * 2));
+        auto titlebar = createTitlebar(frame, geo.width, tbHeight);
+        import std.conv : to;
+
+        immutable frameName = "Frame of " ~ window.to!string(16);
+        immutable titlebarName = "Titlebar of " ~ window.to!string(16);
+        xcb_change_property(connection, XCB_PROP_MODE_APPEND, frame, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
+                cast(uint) frameName.length, frameName.ptr);
+        xcb_change_property(connection, XCB_PROP_MODE_APPEND, titlebar, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
+                cast(uint) titlebarName.length, titlebarName.ptr);
         import core.stdc.stdlib : free;
 
         free(geo);
         xcb_change_save_set(connection, XCB_SET_MODE_INSERT, window);
-        xcb_reparent_window(connection, window, frame, 0, 0);
+        xcb_reparent_window(connection, window, frame, 0, tbHeight);
         xcb_map_window(connection, frame);
+        xcb_map_window(connection, titlebar);
         xcb_map_window(connection, window);
         xcb_flush(connection);
 
@@ -228,7 +309,7 @@ class Redbat
             }
         }
         xcb_configure_window(connection, event.window, event.value_mask, values[popCount .. $].ptr);
-
+        // TODO: redraw titlebar
         xcb_flush(connection);
     }
 }
