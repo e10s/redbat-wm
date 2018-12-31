@@ -181,7 +181,20 @@ class Redbat
 
     void onButtonPress(xcb_button_press_event_t* event)
     {
+        // XXX: assume event.event to be frame
         info(*event);
+        foreach (kv; frameOf.byKeyValue)
+        {
+            if (event.event == kv.value)
+            {
+                infof("Set focus: %#x", kv.key);
+                xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, kv.key, XCB_CURRENT_TIME);
+                immutable uint v = XCB_STACK_MODE_ABOVE;
+                xcb_configure_window(connection, event.event, XCB_CONFIG_WINDOW_STACK_MODE, &v);
+                xcb_flush(connection);
+                break;
+            }
+        }
     }
 
     void onButtonRelease(xcb_button_release_event_t* event)
@@ -221,10 +234,7 @@ class Redbat
     xcb_window_t createTitlebar(xcb_window_t frame, ushort width, ushort height)
     {
         auto titlebar = xcb_generate_id(connection);
-        uint[] values = [
-            screen.white_pixel,
-            XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_EXPOSURE
-        ];
+        uint[] values = [screen.white_pixel, XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_EXPOSURE];
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, titlebar, frame, 0, 0, width, height, 0,
                 XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK, values.ptr);
         xcb_flush(connection);
@@ -234,10 +244,9 @@ class Redbat
     xcb_window_t createFrame(short x, short y, ushort width, ushort height)
     {
         auto frame = xcb_generate_id(connection);
+        immutable uint mask = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, rootWindow, x, y, width, height, 3,
-                XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, 0, null);
-        immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
-        xcb_change_window_attributes_checked(connection, frame, XCB_CW_EVENT_MASK, &mask);
+                XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_EVENT_MASK, &mask);
         xcb_flush(connection);
         return frame;
     }
