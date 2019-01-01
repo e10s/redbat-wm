@@ -9,6 +9,8 @@ class Redbat
     xcb_window_t rootWindow;
     xcb_window_t[xcb_window_t] frameOf;
     xcb_gcontext_t titlebarGC;
+    immutable ushort frameBorderWidth = 3;
+    immutable ushort titlebarHeight = 30;
 
     this()
     {
@@ -164,7 +166,7 @@ class Redbat
             }
 
             infof("%#x", child);
-            frameOf[child] = applyFrame(child);
+            frameOf[child] = applyFrame(child, true);
         }
 
         free(reply);
@@ -245,19 +247,26 @@ class Redbat
     {
         auto frame = xcb_generate_id(connection);
         immutable uint mask = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
-        xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, rootWindow, x, y, width, height, 3,
+        xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, rootWindow, x, y, width, height, frameBorderWidth,
                 XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_EVENT_MASK, &mask);
         xcb_flush(connection);
         return frame;
     }
 
-    xcb_window_t applyFrame(xcb_window_t window)
+    xcb_window_t applyFrame(xcb_window_t window, bool forExisting)
     {
-        immutable tbHeight = 30;
         immutable geo = getGeometry(window);
-        auto frame = createFrame(geo.x, geo.y, cast(ushort)(geo.width + geo.border_width * 2),
-                cast(ushort)(tbHeight + geo.height + geo.border_width * 2));
-        auto titlebar = createTitlebar(frame, geo.width, tbHeight);
+        short frameX = geo.x;
+        short frameY = geo.y;
+        if (forExisting)
+        {
+            frameX -= frameBorderWidth;
+            frameY -= frameBorderWidth;
+            frameY -= titlebarHeight;
+        }
+        auto frame = createFrame(frameX, frameY, cast(ushort)(geo.width + geo.border_width * 2),
+                cast(ushort)(titlebarHeight + geo.height + geo.border_width * 2));
+        auto titlebar = createTitlebar(frame, geo.width, titlebarHeight);
         import std.conv : to;
 
         immutable frameName = "Frame of " ~ window.to!string(16);
@@ -268,7 +277,7 @@ class Redbat
                 cast(uint) titlebarName.length, titlebarName.ptr);
 
         xcb_change_save_set(connection, XCB_SET_MODE_INSERT, window);
-        xcb_reparent_window(connection, window, frame, 0, tbHeight);
+        xcb_reparent_window(connection, window, frame, 0, titlebarHeight);
         xcb_map_window(connection, frame);
         xcb_map_window(connection, titlebar);
         xcb_map_window(connection, window);
@@ -279,7 +288,7 @@ class Redbat
 
     void onMapRequest(xcb_map_request_event_t* event)
     {
-        frameOf[event.window] = applyFrame(event.window);
+        frameOf[event.window] = applyFrame(event.window, false);
     }
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
