@@ -8,6 +8,10 @@ class Redbat
     xcb_screen_t* screen;
     xcb_window_t rootWindow;
     xcb_window_t[xcb_window_t] frameOf;
+    import std.typecons : Tuple;
+
+    alias FrameMembers = Tuple!(xcb_window_t, "titlebar", xcb_window_t, "window");
+    FrameMembers[xcb_window_t] frameMembersOf;
     xcb_gcontext_t titlebarGC;
     immutable ushort frameBorderWidth = 3;
     immutable ushort titlebarHeight = 30;
@@ -166,7 +170,7 @@ class Redbat
             }
 
             infof("%#x", child);
-            frameOf[child] = applyFrame(child, true);
+            applyFrame(child, true);
         }
 
         free(reply);
@@ -185,17 +189,13 @@ class Redbat
     {
         // XXX: assume event.event to be frame
         info(*event);
-        foreach (kv; frameOf.byKeyValue)
+        if (auto mem_p = event.event in frameMembersOf)
         {
-            if (event.event == kv.value)
-            {
-                infof("Set focus: %#x", kv.key);
-                xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, kv.key, event.time);
-                immutable uint v = XCB_STACK_MODE_ABOVE;
-                xcb_configure_window(connection, event.event, XCB_CONFIG_WINDOW_STACK_MODE, &v);
-                xcb_flush(connection);
-                break;
-            }
+            infof("Set focus: %#x", mem_p.window);
+            xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, mem_p.window, event.time);
+            immutable uint v = XCB_STACK_MODE_ABOVE;
+            xcb_configure_window(connection, event.event, XCB_CONFIG_WINDOW_STACK_MODE, &v);
+            xcb_flush(connection);
         }
     }
 
@@ -230,6 +230,7 @@ class Redbat
         infof("destroy frame %#x", frame);
         xcb_flush(connection);
 
+        frameMembersOf.remove(frame);
         frameOf.remove(event.window);
     }
 
@@ -283,12 +284,14 @@ class Redbat
         xcb_map_window(connection, window);
         xcb_flush(connection);
 
+        frameOf[window] = frame;
+        frameMembersOf[frame] = FrameMembers(titlebar, window);
         return frame;
     }
 
     void onMapRequest(xcb_map_request_event_t* event)
     {
-        frameOf[event.window] = applyFrame(event.window, false);
+        applyFrame(event.window, false);
     }
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
