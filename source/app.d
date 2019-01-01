@@ -188,7 +188,7 @@ class Redbat
             if (event.event == kv.value)
             {
                 infof("Set focus: %#x", kv.key);
-                xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, kv.key, XCB_CURRENT_TIME);
+                xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, kv.key, event.time);
                 immutable uint v = XCB_STACK_MODE_ABOVE;
                 xcb_configure_window(connection, event.event, XCB_CONFIG_WINDOW_STACK_MODE, &v);
                 xcb_flush(connection);
