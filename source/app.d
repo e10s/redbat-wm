@@ -51,14 +51,14 @@ class Redbat
         auto cookie = xcb_change_window_attributes_checked(connection, rootWindow, XCB_CW_EVENT_MASK, &mask);
         enforce(xcb_request_check(connection, cookie) is null, "Another wm is running");
 
-        xcb_flush(connection);
-
         infof("Successfully obtained root window of %#x", rootWindow);
 
         manageChildrenOfRoot();
 
         xcb_grab_button(connection, 0, rootWindow, XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
                 XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_BUTTON_INDEX_ANY, XCB_MOD_MASK_ANY);
+
+        xcb_flush(connection);
 
         while (true)
         {
@@ -78,7 +78,6 @@ class Redbat
             case XCB_EXPOSE:
                 infof("XCB_EXPOSE %s", eventType);
                 onExpose(cast(xcb_expose_event_t*) event);
-                xcb_flush(connection);
                 break;
             case XCB_BUTTON_PRESS:
                 infof("XCB_BUTTON_PRESS %s", eventType);
@@ -112,6 +111,7 @@ class Redbat
                 warningf("Unknown event: %s", eventType);
                 break;
             }
+            xcb_flush(connection);
 
             import core.stdc.stdlib : free;
 
@@ -211,7 +211,6 @@ class Redbat
         {
             infof("Button presse event is detected above unmanaged window %#x", event.child);
         }
-        xcb_flush(connection);
     }
 
     void onButtonRelease(xcb_button_release_event_t* event)
@@ -243,7 +242,6 @@ class Redbat
         xcb_change_save_set(connection, XCB_SET_MODE_DELETE, event.window);
         xcb_destroy_window(connection, frame);
         infof("destroy frame %#x", frame);
-        xcb_flush(connection);
 
         frameMembersOf.remove(frame);
         frameOf.remove(event.window);
@@ -255,7 +253,6 @@ class Redbat
         uint[] values = [screen.white_pixel, XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_EXPOSURE];
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, titlebar, frame, 0, 0, width, height, 0,
                 XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK, values.ptr);
-        xcb_flush(connection);
         return titlebar;
     }
 
@@ -265,7 +262,6 @@ class Redbat
         immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, rootWindow, x, y, width, height, frameBorderWidth,
                 XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_EVENT_MASK, &mask);
-        xcb_flush(connection);
         return frame;
     }
 
@@ -297,7 +293,6 @@ class Redbat
         xcb_map_window(connection, frame);
         xcb_map_window(connection, titlebar);
         xcb_map_window(connection, window);
-        xcb_flush(connection);
 
         frameOf[window] = frame;
         frameMembersOf[frame] = FrameMembers(titlebar, window);
@@ -363,7 +358,6 @@ class Redbat
         }
         xcb_configure_window(connection, event.window, event.value_mask, values[popCount .. $].ptr);
         // TODO: redraw titlebar
-        xcb_flush(connection);
     }
 }
 
