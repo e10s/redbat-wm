@@ -66,6 +66,10 @@ class Redbat
             auto event = xcb_poll_for_event(connection);
             if (event is null)
             {
+                if (xcb_connection_has_error(connection))
+                {
+                    break;
+                }
                 import core.thread;
 
                 Thread.sleep(20.dur!"msecs"); // Save the earth!!
