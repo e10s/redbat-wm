@@ -8,5 +8,8 @@
 	],
 	"copyright": "Copyright © 2018, Kazuya Takahashi",
 	"license": "MIT",
-	"name": "redbat-wm"
+	"name": "redbat-wm",
+	"libs": [
+		"xcb-icccm"
+	]
 }

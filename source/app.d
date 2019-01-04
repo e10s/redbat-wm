@@ -1,6 +1,7 @@
 import std.exception : enforce;
 import std.experimental.logger;
 import xcb.xcb;
+import xcb.icccm;
 
 class Redbat
 {
@@ -195,25 +196,108 @@ class Redbat
         xcb_poly_fill_rectangle(connection, event.window, titlebarGC, 1, &rect);
     }
 
+    void closeWindow(xcb_window_t frame, xcb_timestamp_t time = XCB_CURRENT_TIME)
+    {
+        if (auto mem_p = frame in frameMembersOf)
+        {
+            void kill()
+            {
+                infof("Fall back to killing %#x", mem_p.window);
+                xcb_kill_client(connection, mem_p.window);
+            }
+
+            auto atomProto = getAtomByName(connection, "WM_PROTOCOLS");
+            auto atomDelWin = getAtomByName(connection, "WM_DELETE_WINDOW");
+            xcb_icccm_get_wm_protocols_reply_t protocols;
+            if (!xcb_icccm_get_wm_protocols_reply(connection, xcb_icccm_get_wm_protocols(connection, mem_p.window,
+                    atomProto), &protocols, null))
+            {
+                warningf("WM_PROTOCOLS is not supported: %#x", mem_p.window);
+                kill();
+                return;
+            }
+            import std.algorithm.searching : canFind;
+
+            if (!protocols.atoms[0 .. protocols.atoms_len].canFind(atomDelWin))
+            {
+                warningf("WM_DELETE_WINDOW is not supported: %#x", mem_p.window);
+                kill();
+                return;
+            }
+
+            infof("Let's send WM_DELETE_WINDOW to %#x", mem_p.window);
+            // dfmt off
+            xcb_client_message_data_t clientMessageData = {
+                data32: [atomDelWin, time, 0, 0, 0]
+            };
+            xcb_client_message_event_t clientMessageEvent = {
+                response_type: XCB_CLIENT_MESSAGE,
+                format : 32,
+                window: mem_p.window,
+                type: atomProto,
+                data: clientMessageData
+            };
+            // dfmt on
+            xcb_send_event(connection, 0, mem_p.window, XCB_EVENT_MASK_NO_EVENT, cast(char*)&clientMessageEvent);
+        }
+        else
+        {
+            errorf("Not a frame: %#x", frame);
+        }
+    }
+
+    void focusWindow(xcb_window_t frame, xcb_timestamp_t time = XCB_CURRENT_TIME)
+    {
+        if (auto mem_p = frame in frameMembersOf)
+        {
+            infof("Set focus: %#x", mem_p.window);
+            xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, mem_p.window, time);
+            immutable uint v = XCB_STACK_MODE_ABOVE;
+            xcb_configure_window(connection, frame, XCB_CONFIG_WINDOW_STACK_MODE, &v);
+        }
+    }
+
     void onButtonPress(xcb_button_press_event_t* event)
     {
         // XXX: assume event.event to be root
         infof("%#x %#x", event.event, event.child);
-        if (event.event != rootWindow)
+        if (event.event == rootWindow)
         {
-            return;
-        }
+            if (auto mem_p = event.child in frameMembersOf)
+            {
+                if (event.detail == XCB_BUTTON_INDEX_2)
+                {
+                    auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection,
+                            rootWindow, mem_p.titlebar, event.root_x, event.root_y), null);
+                    if (reply is null)
+                    {
+                        warning("Failed to translate coords");
+                        return;
+                    }
 
-        if (auto mem_p = event.child in frameMembersOf)
-        {
-            infof("Set focus: %#x", mem_p.window);
-            xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, mem_p.window, event.time);
-            immutable uint v = XCB_STACK_MODE_ABOVE;
-            xcb_configure_window(connection, event.child, XCB_CONFIG_WINDOW_STACK_MODE, &v);
-        }
-        else
-        {
-            infof("Button presse event is detected above unmanaged window %#x", event.child);
+                    immutable titlebarGeo = getGeometry(mem_p.titlebar);
+                    if ( /*0 <= reply.dst_x && */ reply.dst_x < titlebarGeo.width && /*0 <= reply.dst_y &&*/ reply.dst_y
+                            < titlebarGeo.height) // event is in titlebar region
+                            {
+                        closeWindow(event.child, event.time);
+                    }
+                    else
+                    {
+                        focusWindow(event.child, event.time);
+                    }
+                    import core.stdc.stdlib : free;
+
+                    free(reply);
+                }
+                else
+                {
+                    focusWindow(event.child, event.time);
+                }
+            }
+            else
+            {
+                infof("Button presse event is detected above unmanaged window %#x", event.child);
+            }
         }
     }
 
@@ -383,4 +467,18 @@ xcb_screen_t* screenOfDisplay(xcb_connection_t* connection, int screen)
     }
 
     return null;
+}
+
+xcb_atom_t getAtomByName(xcb_connection_t* connection, in string name)
+{
+    xcb_atom_t ret = XCB_ATOM_NONE;
+    auto reply = xcb_intern_atom_reply(connection, xcb_intern_atom(connection, 0, cast(ushort) name.length, name.ptr), null);
+    if (reply !is null)
+    {
+        ret = reply.atom;
+        import core.stdc.stdlib : free;
+
+        free(reply);
+    }
+    return ret;
 }
