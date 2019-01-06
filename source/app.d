@@ -1,19 +1,17 @@
+import core.stdc.stdlib : free;
+import redbat.geometry;
+import redbat.window;
 import std.exception : enforce;
 import std.experimental.logger;
 import xcb.xcb;
-import xcb.icccm;
-import redbat.geometry;
 
 class Redbat
 {
     xcb_connection_t* connection;
     xcb_screen_t* screen;
-    xcb_window_t rootWindow;
-    xcb_window_t[xcb_window_t] frameOf;
-    import std.typecons : Tuple;
-
-    alias FrameMembers = Tuple!(xcb_window_t, "titlebar", xcb_window_t, "window");
-    FrameMembers[xcb_window_t] frameMembersOf;
+    Window root;
+    import std.container.rbtree;
+    RedBlackTree!(Frame, "a.window<b.window") frames;
     xcb_gcontext_t titlebarGC;
     immutable ushort frameBorderWidth = 3;
     immutable ushort titlebarHeight = 30;
@@ -27,8 +25,8 @@ class Redbat
         screen = screenOfDisplay(connection, screenNum);
         enforce(screen !is null, "Screen is null");
 
-        rootWindow = screen.root;
-
+        root = new Window(connection, screen, screen.root);
+        frames = new typeof(frames);
         titlebarGC = xcb_generate_id(connection);
         immutable fgColor = "DeepPink";
         auto reply = xcb_alloc_named_color_reply(connection, xcb_alloc_named_color(connection, screen.default_colormap,
@@ -38,7 +36,7 @@ class Redbat
         import core.stdc.stdlib : free;
 
         free(reply);
-        xcb_create_gc(connection, titlebarGC, rootWindow, XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES, valuesGC.ptr);
+        xcb_create_gc(connection, titlebarGC, root.window, XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES, valuesGC.ptr);
     }
 
     ~this()
@@ -50,14 +48,14 @@ class Redbat
     void run()
     {
         immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
-        auto cookie = xcb_change_window_attributes_checked(connection, rootWindow, XCB_CW_EVENT_MASK, &mask);
+        auto cookie = xcb_change_window_attributes_checked(connection, root.window, XCB_CW_EVENT_MASK, &mask);
         enforce(xcb_request_check(connection, cookie) is null, "Another wm is running");
 
-        infof("Successfully obtained root window of %#x", rootWindow);
+        infof("Successfully obtained root window of %#x", root.window);
 
         manageChildrenOfRoot();
 
-        xcb_grab_button(connection, 0, rootWindow, XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
+        xcb_grab_button(connection, 0, root.window, XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
                 XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_BUTTON_INDEX_ANY, XCB_MOD_MASK_ANY);
 
         xcb_flush(connection);
@@ -123,25 +121,22 @@ class Redbat
             }
             xcb_flush(connection);
 
-            import core.stdc.stdlib : free;
-
             free(event);
         }
     }
 
     void manageChildrenOfRoot()
     {
-        auto reply = xcb_query_tree_reply(connection, xcb_query_tree(connection, rootWindow), null);
+        auto reply = xcb_query_tree_reply(connection, xcb_query_tree(connection, root.window), null);
         if (reply is null)
         {
             error("Cannot get children of root");
             return;
         }
+
         const children = xcb_query_tree_children(reply);
-
-        import core.stdc.stdlib : free;
-
-        foreach (i, child; children[0 .. xcb_query_tree_children_length(reply)])
+        immutable len = xcb_query_tree_children_length(reply);
+        foreach (i, child; children[0 .. len])
         {
             auto attr = xcb_get_window_attributes_reply(connection, xcb_get_window_attributes(connection, child), null);
             if (attr is null)
@@ -158,7 +153,7 @@ class Redbat
                 continue;
             }
 
-            infof("%#x", child);
+            infof("Manage %#x", child);
             applyFrame(child, true);
         }
 
@@ -168,70 +163,43 @@ class Redbat
     void onExpose(xcb_expose_event_t* event)
     {
         // XXX: assume event.window to be titlebar
-        immutable geo = getGeometry(connection, event.window);
-        immutable margin = ushort(3);
-        auto rect = xcb_rectangle_t(margin, margin, cast(ushort)(geo.width - margin * 2), cast(ushort)(geo.height - margin * 2));
-        xcb_poly_fill_rectangle(connection, event.window, titlebarGC, 1, &rect);
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find!"a.titlebar.window==b"(event.window);
+        if (!r.empty)
+        {
+            r.front.titlebar.draw(titlebarGC);
+        }
     }
 
-    void closeWindow(xcb_window_t frame, xcb_timestamp_t time = XCB_CURRENT_TIME)
+    void closeWindow(Frame frame, xcb_timestamp_t time = XCB_CURRENT_TIME)
     {
-        if (auto mem_p = frame in frameMembersOf)
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find(frame);
+        if (!r.empty)
         {
-            void kill()
-            {
-                infof("Fall back to killing %#x", mem_p.window);
-                xcb_kill_client(connection, mem_p.window);
-            }
-
-            auto atomProto = getAtomByName(connection, "WM_PROTOCOLS");
-            auto atomDelWin = getAtomByName(connection, "WM_DELETE_WINDOW");
-            xcb_icccm_get_wm_protocols_reply_t protocols;
-            if (!xcb_icccm_get_wm_protocols_reply(connection, xcb_icccm_get_wm_protocols(connection, mem_p.window,
-                    atomProto), &protocols, null))
-            {
-                warningf("WM_PROTOCOLS is not supported: %#x", mem_p.window);
-                kill();
-                return;
-            }
-            import std.algorithm.searching : canFind;
-
-            if (!protocols.atoms[0 .. protocols.atoms_len].canFind(atomDelWin))
-            {
-                warningf("WM_DELETE_WINDOW is not supported: %#x", mem_p.window);
-                kill();
-                return;
-            }
-
-            infof("Let's send WM_DELETE_WINDOW to %#x", mem_p.window);
-            // dfmt off
-            xcb_client_message_data_t clientMessageData = {
-                data32: [atomDelWin, time, 0, 0, 0]
-            };
-            xcb_client_message_event_t clientMessageEvent = {
-                response_type: XCB_CLIENT_MESSAGE,
-                format : 32,
-                window: mem_p.window,
-                type: atomProto,
-                data: clientMessageData
-            };
-            // dfmt on
-            xcb_send_event(connection, 0, mem_p.window, XCB_EVENT_MASK_NO_EVENT, cast(char*)&clientMessageEvent);
+            r.front.close(time);
         }
         else
         {
-            errorf("Not a frame: %#x", frame);
+            errorf("An unmanaged frame: %#x", frame.window);
         }
     }
 
-    void focusWindow(xcb_window_t frame, xcb_timestamp_t time = XCB_CURRENT_TIME)
+    void focusWindow(Frame frame, xcb_timestamp_t time = XCB_CURRENT_TIME)
     {
-        if (auto mem_p = frame in frameMembersOf)
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find(frame);
+        if (!r.empty)
         {
-            infof("Set focus: %#x", mem_p.window);
-            xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, mem_p.window, time);
-            immutable uint v = XCB_STACK_MODE_ABOVE;
-            xcb_configure_window(connection, frame, XCB_CONFIG_WINDOW_STACK_MODE, &v);
+            infof("Set focus: %#x", frame.window);
+            r.front.focus(time);
+        }
+        else
+        {
+            errorf("An unmanaged frame: %#x", frame.window);
         }
     }
 
@@ -239,29 +207,33 @@ class Redbat
     {
         // XXX: assume event.event to be root
         infof("%#x %#x", event.event, event.child);
-        if (event.event == rootWindow)
+        if (event.event == root.window)
         {
-            if (auto mem_p = event.child in frameMembersOf)
+            import std.algorithm.searching : find;
+
+            auto r = frames[].find!"a.window==b"(event.child);
+            if (!r.empty)
             {
+                auto frame = r.front;
                 if (event.detail == XCB_BUTTON_INDEX_2)
                 {
                     auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection,
-                            rootWindow, mem_p.titlebar, event.root_x, event.root_y), null);
+                            root.window, frame.titlebar.window, event.root_x, event.root_y), null);
                     if (reply is null)
                     {
                         warning("Failed to translate coords");
                         return;
                     }
 
-                    immutable titlebarGeo = getGeometry(connection, mem_p.titlebar);
+                    immutable titlebarGeo = frame.titlebar.geometry;
                     if ( /*0 <= reply.dst_x && */ reply.dst_x < titlebarGeo.width && /*0 <= reply.dst_y &&*/ reply.dst_y
                             < titlebarGeo.height) // event is in titlebar region
                             {
-                        closeWindow(event.child, event.time);
+                        closeWindow(frame, event.time);
                     }
                     else
                     {
-                        focusWindow(event.child, event.time);
+                        focusWindow(frame, event.time);
                     }
                     import core.stdc.stdlib : free;
 
@@ -269,7 +241,7 @@ class Redbat
                 }
                 else
                 {
-                    focusWindow(event.child, event.time);
+                    focusWindow(frame, event.time);
                 }
             }
             else
@@ -291,49 +263,29 @@ class Redbat
 
     void onUnmapNotify(xcb_unmap_notify_event_t* event)
     {
-        auto frame_p = event.window in frameOf;
-        if (frame_p is null)
+        // XXX: assume event.window to be client
+       import std.algorithm.searching : find;
+
+        auto r = frames[].find!"a.client.window==b"(event.window);
+        if (r.empty)
         {
             infof("unmap %#x, unmanaged", event.window);
             return;
         }
 
-        immutable frame = *frame_p;
-        infof("unmap %#x, frame %#x", event.window, frame);
+        auto frame = r.front;
+        infof("unmap %#x, frame %#x", event.window, frame.window);
 
-        immutable frameGeo = getGeometry(connection, frame);
-        infof("Frame to be removed is at (%s, %s)", frameGeo.x, frameGeo.y);
+        frame.unreparentClient();
+        frame.destroy_();
+        infof("destroy frame %#x", frame.window);
 
-        xcb_reparent_window(connection, event.window, rootWindow, frameGeo.x, frameGeo.y);
-        xcb_change_save_set(connection, XCB_SET_MODE_DELETE, event.window);
-        xcb_destroy_window(connection, frame);
-        infof("destroy frame %#x", frame);
-
-        frameMembersOf.remove(frame);
-        frameOf.remove(event.window);
+        frames.removeKey(frame);
     }
 
-    xcb_window_t createTitlebar(xcb_window_t frame, ushort width, ushort height)
+    xcb_window_t applyFrame(xcb_window_t client, bool forExisting)
     {
-        auto titlebar = xcb_generate_id(connection);
-        uint[] values = [screen.white_pixel, XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_EXPOSURE];
-        xcb_create_window(connection, XCB_COPY_FROM_PARENT, titlebar, frame, 0, 0, width, height, 0,
-                XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK, values.ptr);
-        return titlebar;
-    }
-
-    xcb_window_t createFrame(short x, short y, ushort width, ushort height)
-    {
-        auto frame = xcb_generate_id(connection);
-        immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
-        xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, rootWindow, x, y, width, height, frameBorderWidth,
-                XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_EVENT_MASK, &mask);
-        return frame;
-    }
-
-    xcb_window_t applyFrame(xcb_window_t window, bool forExisting)
-    {
-        immutable geo = getGeometry(connection, window);
+        immutable geo = getGeometry(connection, client);
         short frameX = geo.x;
         short frameY = geo.y;
         if (forExisting)
@@ -342,29 +294,17 @@ class Redbat
             frameY -= frameBorderWidth;
             frameY -= titlebarHeight;
         }
-        auto frame = createFrame(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
-                cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2));
-        auto titlebar = createTitlebar(frame, geo.width, titlebarHeight);
-        import std.conv : to;
-
-        immutable frameName = "Frame of " ~ window.to!string(16);
-        immutable titlebarName = "Titlebar of " ~ window.to!string(16);
-        xcb_change_property(connection, XCB_PROP_MODE_APPEND, frame, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
-                cast(uint) frameName.length, frameName.ptr);
-        xcb_change_property(connection, XCB_PROP_MODE_APPEND, titlebar, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
-                cast(uint) titlebarName.length, titlebarName.ptr);
+        auto frame = new Frame(root, Geometry(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
+                cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2), frameBorderWidth));
+        auto titlebar = new Titlebar(frame, Geometry(0, 0, geo.width, titlebarHeight, 0));
         immutable uint mask = XCB_EVENT_MASK_PROPERTY_CHANGE;
-        xcb_change_window_attributes(connection, window, XCB_CW_EVENT_MASK, &mask);
+        xcb_change_window_attributes(connection, client, XCB_CW_EVENT_MASK, &mask);
 
-        xcb_change_save_set(connection, XCB_SET_MODE_INSERT, window);
-        xcb_reparent_window(connection, window, frame, 0, titlebarHeight);
-        xcb_map_window(connection, frame);
-        xcb_map_window(connection, titlebar);
-        xcb_map_window(connection, window);
+        frame.reparentClient(client);
+        frame.mapAll();
 
-        frameOf[window] = frame;
-        frameMembersOf[frame] = FrameMembers(titlebar, window);
-        return frame;
+        frames.insert(frame);
+        return frame.window;
     }
 
     void onMapRequest(xcb_map_request_event_t* event)
@@ -408,7 +348,7 @@ class Redbat
         }
 
         size_t popCount;
-        if (event.parent != rootWindow)
+        if (event.parent != root.window)
         { // event for frame
             xcb_configure_window(connection, event.parent, event.value_mask, values.ptr);
 
@@ -459,18 +399,4 @@ xcb_screen_t* screenOfDisplay(xcb_connection_t* connection, int screen)
     }
 
     return null;
-}
-
-xcb_atom_t getAtomByName(xcb_connection_t* connection, in string name)
-{
-    xcb_atom_t ret = XCB_ATOM_NONE;
-    auto reply = xcb_intern_atom_reply(connection, xcb_intern_atom(connection, 0, cast(ushort) name.length, name.ptr), null);
-    if (reply !is null)
-    {
-        ret = reply.atom;
-        import core.stdc.stdlib : free;
-
-        free(reply);
-    }
-    return ret;
 }
