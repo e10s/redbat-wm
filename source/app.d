@@ -112,6 +112,10 @@ class Redbat
                 infof("XCB_CIRCULATE_REQUEST %s", eventType);
                 // Do something
                 break;
+            case XCB_PROPERTY_NOTIFY:
+                infof("XCB_PROPERTY_NOTIFY %s", eventType);
+                onPropertyNotify(cast(xcb_property_notify_event_t*) event);
+                break;
             default:
                 warningf("Unknown event: %s", eventType);
                 break;
@@ -375,6 +379,8 @@ class Redbat
                 cast(uint) frameName.length, frameName.ptr);
         xcb_change_property(connection, XCB_PROP_MODE_APPEND, titlebar, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
                 cast(uint) titlebarName.length, titlebarName.ptr);
+        immutable uint mask = XCB_EVENT_MASK_PROPERTY_CHANGE;
+        xcb_change_window_attributes(connection, window, XCB_CW_EVENT_MASK, &mask);
 
         xcb_change_save_set(connection, XCB_SET_MODE_INSERT, window);
         xcb_reparent_window(connection, window, frame, 0, titlebarHeight);
@@ -447,6 +453,18 @@ class Redbat
         xcb_configure_window(connection, event.window, event.value_mask, values[popCount .. $].ptr);
         // TODO: redraw titlebar
     }
+
+    void onPropertyNotify(xcb_property_notify_event_t* event)
+    {
+        auto reply = xcb_get_atom_name_reply(connection, xcb_get_atom_name(connection, event.atom), null);
+        immutable atomName = xcb_get_atom_name_name(reply)[0 .. reply.name_len].idup;
+        import core.stdc.stdlib : free;
+
+        free(reply);
+
+        infof("%#x, %s", event.window, atomName);
+    }
+
 }
 
 void main()
