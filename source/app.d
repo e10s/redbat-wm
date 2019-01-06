@@ -2,6 +2,7 @@ import std.exception : enforce;
 import std.experimental.logger;
 import xcb.xcb;
 import xcb.icccm;
+import redbat.geometry;
 
 class Redbat
 {
@@ -128,33 +129,6 @@ class Redbat
         }
     }
 
-    struct Geometry
-    {
-        short x;
-        short y;
-        ushort width;
-        ushort height;
-        ushort border_width;
-    }
-
-    auto getGeometry(xcb_drawable_t window)
-    {
-        Geometry geo;
-        auto geo_p = xcb_get_geometry_reply(connection, xcb_get_geometry(connection, window), null);
-        if (geo_p !is null)
-        {
-            geo.x = geo_p.x;
-            geo.y = geo_p.y;
-            geo.width = geo_p.width;
-            geo.height = geo_p.height;
-            geo.border_width = geo_p.border_width;
-            import core.stdc.stdlib : free;
-
-            free(geo_p);
-        }
-        return geo;
-    }
-
     void manageChildrenOfRoot()
     {
         auto reply = xcb_query_tree_reply(connection, xcb_query_tree(connection, rootWindow), null);
@@ -194,7 +168,7 @@ class Redbat
     void onExpose(xcb_expose_event_t* event)
     {
         // XXX: assume event.window to be titlebar
-        immutable geo = getGeometry(event.window);
+        immutable geo = getGeometry(connection, event.window);
         immutable margin = ushort(3);
         auto rect = xcb_rectangle_t(margin, margin, cast(ushort)(geo.width - margin * 2), cast(ushort)(geo.height - margin * 2));
         xcb_poly_fill_rectangle(connection, event.window, titlebarGC, 1, &rect);
@@ -279,7 +253,7 @@ class Redbat
                         return;
                     }
 
-                    immutable titlebarGeo = getGeometry(mem_p.titlebar);
+                    immutable titlebarGeo = getGeometry(connection, mem_p.titlebar);
                     if ( /*0 <= reply.dst_x && */ reply.dst_x < titlebarGeo.width && /*0 <= reply.dst_y &&*/ reply.dst_y
                             < titlebarGeo.height) // event is in titlebar region
                             {
@@ -327,7 +301,7 @@ class Redbat
         immutable frame = *frame_p;
         infof("unmap %#x, frame %#x", event.window, frame);
 
-        immutable frameGeo = getGeometry(frame);
+        immutable frameGeo = getGeometry(connection, frame);
         infof("Frame to be removed is at (%s, %s)", frameGeo.x, frameGeo.y);
 
         xcb_reparent_window(connection, event.window, rootWindow, frameGeo.x, frameGeo.y);
@@ -359,7 +333,7 @@ class Redbat
 
     xcb_window_t applyFrame(xcb_window_t window, bool forExisting)
     {
-        immutable geo = getGeometry(window);
+        immutable geo = getGeometry(connection, window);
         short frameX = geo.x;
         short frameY = geo.y;
         if (forExisting)
@@ -368,8 +342,8 @@ class Redbat
             frameY -= frameBorderWidth;
             frameY -= titlebarHeight;
         }
-        auto frame = createFrame(frameX, frameY, cast(ushort)(geo.width + geo.border_width * 2),
-                cast(ushort)(titlebarHeight + geo.height + geo.border_width * 2));
+        auto frame = createFrame(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
+                cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2));
         auto titlebar = createTitlebar(frame, geo.width, titlebarHeight);
         import std.conv : to;
 
