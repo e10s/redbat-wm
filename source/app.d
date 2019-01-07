@@ -11,6 +11,7 @@ class Redbat
     xcb_screen_t* screen;
     Window root;
     import std.container.rbtree;
+
     RedBlackTree!(Frame, "a.window<b.window") frames;
     xcb_gcontext_t titlebarGC;
     immutable ushort frameBorderWidth = 3;
@@ -264,7 +265,7 @@ class Redbat
     void onUnmapNotify(xcb_unmap_notify_event_t* event)
     {
         // XXX: assume event.window to be client
-       import std.algorithm.searching : find;
+        import std.algorithm.searching : find;
 
         auto r = frames[].find!"a.client.window==b"(event.window);
         if (r.empty)
@@ -315,57 +316,112 @@ class Redbat
     void onConfigureRequest(xcb_configure_request_event_t* event)
     {
         infof("pw = (%#x, %#x), xy = (%s, %s), wh = (%s, %s)", event.parent, event.window, event.x, event.y, event.width, event.height);
-        uint[] values;
 
-        // Set values in this order!!
-        if (event.value_mask & XCB_CONFIG_WINDOW_X)
+        // Needed to handle manually
+        if (event.parent == root.window)
         {
-            values ~= event.x;
-        }
-        if (event.value_mask & XCB_CONFIG_WINDOW_Y)
-        {
-            values ~= event.y;
-        }
-        if (event.value_mask & XCB_CONFIG_WINDOW_WIDTH)
-        {
-            values ~= event.width;
-        }
-        if (event.value_mask & XCB_CONFIG_WINDOW_HEIGHT)
-        {
-            values ~= event.height;
-        }
-        if (event.value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
-        {
-            values ~= event.border_width;
-        }
-        if (event.value_mask & XCB_CONFIG_WINDOW_SIBLING)
-        {
-            values ~= event.sibling;
-        }
-        if (event.value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
-        {
-            values ~= event.stack_mode;
-        }
+            infof("ConfigReq from unmanaged client: %#x", event.window);
+            uint[] values;
 
-        size_t popCount;
-        if (event.parent != root.window)
-        { // event for frame
-            xcb_configure_window(connection, event.parent, event.value_mask, values.ptr);
-
-            // No need to move the child within its frame
+            // Set values in this order!!
             if (event.value_mask & XCB_CONFIG_WINDOW_X)
             {
-                event.value_mask |= ~XCB_CONFIG_WINDOW_X;
-                popCount++;
+                values ~= event.x;
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_Y)
             {
-                event.value_mask |= ~XCB_CONFIG_WINDOW_Y;
-                popCount++;
+                values ~= event.y;
             }
+            if (event.value_mask & XCB_CONFIG_WINDOW_WIDTH)
+            {
+                values ~= event.width;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_HEIGHT)
+            {
+                values ~= event.height;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
+            {
+                values ~= event.border_width;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_SIBLING)
+            {
+                values ~= event.sibling;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
+            {
+                values ~= event.stack_mode;
+            }
+
+            xcb_configure_window(connection, event.window, event.value_mask, values.ptr);
         }
-        xcb_configure_window(connection, event.window, event.value_mask, values[popCount .. $].ptr);
-        // TODO: redraw titlebar
+        else
+        {
+            import std.algorithm.searching : find;
+
+            auto r = frames[].find!"a.window==b"(event.parent);
+
+            if (r.empty)
+            {
+                warningf("Configure request from unknown client %#x", event.window);
+                return;
+            }
+            auto frame = r.front;
+            auto geoClient = frame.client.geometry;
+            auto geoTitlebar = frame.titlebar.geometry;
+            auto geoFrame = frame.geometry;
+            ushort miscValueMask;
+            uint[] miscValues;
+
+            if (event.value_mask & XCB_CONFIG_WINDOW_X)
+            {
+                geoFrame.x = event.x;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_Y)
+            {
+                geoFrame.y = event.y;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_WIDTH)
+            {
+                geoClient.width = event.width;
+                geoTitlebar.width = event.width;
+                geoTitlebar.width += event.border_width * 2;
+                geoFrame.width = event.width;
+                geoFrame.width += event.border_width * 2;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_HEIGHT)
+            {
+                geoClient.height = event.height;
+                geoFrame.height = event.height;
+                geoFrame.height += geoTitlebar.height;
+                geoFrame.height += event.border_width * 2;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
+            {
+                geoClient.borderWidth = event.border_width;
+            }
+
+            // Set values in this order!!
+            if (event.value_mask & XCB_CONFIG_WINDOW_SIBLING)
+            {
+                miscValueMask |= XCB_CONFIG_WINDOW_SIBLING;
+                miscValues ~= event.sibling;
+            }
+            if (event.value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
+            {
+                miscValueMask |= XCB_CONFIG_WINDOW_STACK_MODE;
+                miscValues ~= event.stack_mode;
+            }
+
+            frame.client.geometry = geoClient;
+            if (miscValueMask)
+            {
+                xcb_configure_window(connection, event.window, miscValueMask, miscValues.ptr);
+            }
+
+            frame.geometry = geoFrame;
+            frame.titlebar.geometry = geoTitlebar;
+        }
     }
 
     void onPropertyNotify(xcb_property_notify_event_t* event)

@@ -44,6 +44,16 @@ class Window
     {
         return getGeometry(connection, window);
     }
+
+    @property Geometry geometry(Geometry newGeo)
+    {
+        ushort valueMask = XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y | XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT
+            | XCB_CONFIG_WINDOW_BORDER_WIDTH;
+        uint[] values = [newGeo.x, newGeo.y, newGeo.width, newGeo.height, newGeo.borderWidth];
+
+        xcb_configure_window(connection, window, valueMask, values.ptr);
+        return newGeo;
+    }
 }
 
 class Frame : Window
