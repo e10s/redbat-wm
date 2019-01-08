@@ -96,6 +96,14 @@ class Redbat
                 infof("XCB_MOTION_NOTIFY %s", eventType);
                 onMotionNotify(cast(xcb_motion_notify_event_t*) event);
                 break;
+            case XCB_FOCUS_IN:
+                infof("XCB_FOCUS_IN %s", eventType);
+                onFocusIn(cast(xcb_focus_in_event_t*) event);
+                break;
+            case XCB_FOCUS_OUT:
+                infof("XCB_FOCUS_OUT %s", eventType);
+                onFocusOut(cast(xcb_focus_out_event_t*) event);
+                break;
             case XCB_UNMAP_NOTIFY:
                 infof("XCB_UNMAP_NOTIFY %s", eventType);
                 onUnmapNotify(cast(xcb_unmap_notify_event_t*) event);
@@ -260,6 +268,38 @@ class Redbat
     void onMotionNotify(xcb_motion_notify_event_t* event)
     {
         info(*event);
+    }
+
+    void onFocusIn(xcb_focus_in_event_t* event)
+    {
+        // XXX: assume event.event to be frame
+        infof("Focused %#x", event.event);
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find!"a.window==b"(event.event);
+
+        if (r.empty)
+        {
+            warningf("Unmanaged frame %#x", event.event);
+            return;
+        }
+        r.front.onFocused();
+    }
+
+    void onFocusOut(xcb_focus_out_event_t* event)
+    {
+        // XXX: assume event.event to be frame
+        infof("Unfocused %#x", event.event);
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find!"a.window==b"(event.event);
+
+        if (r.empty)
+        {
+            warningf("Unmanaged frame %#x", event.event);
+            return;
+        }
+        r.front.onUnforcused();
     }
 
     void onUnmapNotify(xcb_unmap_notify_event_t* event)

@@ -65,7 +65,7 @@ class Frame : Window
     {
         auto frame = xcb_generate_id(root.connection);
         super(root, frame);
-        immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
+        immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_FOCUS_CHANGE;
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, root.window, geo.x, geo.y, geo.width, geo.height,
                 geo.borderWidth, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_EVENT_MASK, &mask);
 
@@ -104,6 +104,16 @@ class Frame : Window
         xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, client.window, time);
         immutable uint v = XCB_STACK_MODE_ABOVE;
         xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_STACK_MODE, &v);
+    }
+
+    void onFocused()
+    {
+
+    }
+
+    void onUnforcused()
+    {
+
     }
 
     void close(xcb_timestamp_t time = XCB_CURRENT_TIME)
