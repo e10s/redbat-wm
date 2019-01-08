@@ -61,8 +61,8 @@ class Frame : Window
     Titlebar titlebar; // child
     Window client; // child
     bool focused;
-    xcb_gcontext_t[] titlebarGC;
-    this(Window root, Geometry geo, in xcb_gcontext_t[] titlebarGC)
+    TitlebarAppearance titlebarAppearance;
+    this(Window root, Geometry geo, TitlebarAppearance titlebarAppearance)
     {
         auto frame = xcb_generate_id(root.connection);
         super(root, frame);
@@ -70,7 +70,7 @@ class Frame : Window
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, root.window, geo.x, geo.y, geo.width, geo.height,
                 geo.borderWidth, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_EVENT_MASK, &mask);
 
-        this.titlebarGC = titlebarGC.dup;
+        this.titlebarAppearance = titlebarAppearance;
     }
 
     void reparentClient(xcb_window_t client)
@@ -165,7 +165,7 @@ class Frame : Window
 
     void draw()
     {
-        titlebar.draw(titlebarGC[focused]);
+        titlebar.draw(focused, titlebarAppearance);
     }
 }
 
@@ -187,11 +187,22 @@ class Titlebar : Window
                 cast(uint) titlebarName.length, titlebarName.ptr);
     }
 
-    void draw(xcb_gcontext_t gc)
+    void draw(bool focused, TitlebarAppearance app)
     {
+        xcb_change_window_attributes(connection, window, XCB_CW_BACK_PIXEL, &(focused ? app.focusedBGColor : app.unfocusedBGColor));
+        xcb_clear_area(connection, 0, window, 0, 0, 0, 0); // Fill the whole window with a new bg color
         immutable geo = geometry; ////
         immutable margin = ushort(3);
         const rect = xcb_rectangle_t(margin, margin, cast(ushort)(geo.width - margin * 2), cast(ushort)(geo.height - margin * 2));
-        xcb_poly_fill_rectangle(connection, window, gc, 1, &rect);
+        xcb_poly_fill_rectangle(connection, window, focused ? app.focusedGC : app.unfocusedGC, 1, &rect);
     }
+}
+
+struct TitlebarAppearance
+{
+    xcb_gcontext_t unfocusedGC;
+    xcb_gcontext_t focusedGC;
+    uint unfocusedBGColor;
+    uint focusedBGColor;
+    ushort height = 30;
 }
