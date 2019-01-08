@@ -16,3 +16,17 @@ xcb_atom_t getAtomByName(xcb_connection_t* connection, in string name)
     }
     return ret;
 }
+
+string getAtomName(xcb_connection_t* connection, xcb_atom_t atom)
+{
+    auto reply = xcb_get_atom_name_reply(connection, xcb_get_atom_name(connection, atom), null);
+    if (reply is null)
+    {
+        return "";
+    }
+    auto ret = xcb_get_atom_name_name(reply)[0 .. reply.name_len].idup;
+    import core.stdc.stdlib : free;
+
+    free(reply);
+    return ret;
+}

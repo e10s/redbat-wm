@@ -426,13 +426,9 @@ class Redbat
 
     void onPropertyNotify(xcb_property_notify_event_t* event)
     {
-        auto reply = xcb_get_atom_name_reply(connection, xcb_get_atom_name(connection, event.atom), null);
-        immutable atomName = xcb_get_atom_name_name(reply)[0 .. reply.name_len].idup;
-        import core.stdc.stdlib : free;
+        import redbat.atom;
 
-        free(reply);
-
-        infof("%#x, %s", event.window, atomName);
+        infof("%#x, %s", event.window, getAtomName(connection, event.atom));
     }
 
 }
