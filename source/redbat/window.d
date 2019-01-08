@@ -83,6 +83,7 @@ class Frame : Window
         immutable frameName = "Frame of " ~ client.to!string(16);
         xcb_change_property(connection, XCB_PROP_MODE_APPEND, window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING, 8,
                 cast(uint) frameName.length, frameName.ptr);
+        // TODO: If client is already focused, onFocused has to be called also.
     }
 
     void unreparentClient()
@@ -104,13 +105,13 @@ class Frame : Window
     void focus(xcb_timestamp_t time = XCB_CURRENT_TIME)
     {
         xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, client.window, time);
-        immutable uint v = XCB_STACK_MODE_ABOVE;
-        xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_STACK_MODE, &v);
     }
 
     void onFocused()
     {
         focused = true;
+        immutable uint v = XCB_STACK_MODE_ABOVE;
+        xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_STACK_MODE, &v);
         draw();
     }
 
