@@ -13,7 +13,7 @@ class Redbat
     import std.container.rbtree;
 
     RedBlackTree!(Frame, "a.window<b.window") frames;
-    xcb_gcontext_t titlebarGC;
+    xcb_gcontext_t[] titlebarGC;
     immutable ushort frameBorderWidth = 3;
     immutable ushort titlebarHeight = 30;
 
@@ -28,21 +28,27 @@ class Redbat
 
         root = new Window(connection, screen, screen.root);
         frames = new typeof(frames);
-        titlebarGC = xcb_generate_id(connection);
-        immutable fgColor = "DeepPink";
-        auto reply = xcb_alloc_named_color_reply(connection, xcb_alloc_named_color(connection, screen.default_colormap,
-                cast(ushort) fgColor.length, fgColor.ptr), null);
-        immutable fgPixel = reply is null ? screen.black_pixel : reply.pixel;
-        uint[] valuesGC = [fgPixel, 0];
-        import core.stdc.stdlib : free;
+        titlebarGC = [xcb_generate_id(connection), xcb_generate_id(connection)];
+        foreach (i, gc; titlebarGC)
+        {
+            immutable fgColors = ["LightPink" /*unfocused*/ , "DeepPink" /*focused*/ ];
 
-        free(reply);
-        xcb_create_gc(connection, titlebarGC, root.window, XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES, valuesGC.ptr);
+            auto reply = xcb_alloc_named_color_reply(connection, xcb_alloc_named_color(connection,
+                    screen.default_colormap, cast(ushort) fgColors[i].length, fgColors[i].ptr), null);
+            immutable fgPixel = reply is null ? screen.black_pixel : reply.pixel;
+            uint[] valuesGC = [fgPixel, 0];
+            import core.stdc.stdlib : free;
+
+            free(reply);
+            xcb_create_gc(connection, gc, root.window, XCB_GC_FOREGROUND | XCB_GC_GRAPHICS_EXPOSURES, valuesGC.ptr);
+        }
     }
 
     ~this()
     {
-        xcb_free_gc(connection, titlebarGC); // XXX: required?
+        import std.algorithm.iteration : each;
+
+        titlebarGC.each!(gc => xcb_free_gc(connection, gc)); // XXX: required?
         xcb_disconnect(connection);
     }
 
@@ -177,7 +183,7 @@ class Redbat
         auto r = frames[].find!"a.titlebar.window==b"(event.window);
         if (!r.empty)
         {
-            r.front.titlebar.draw(titlebarGC);
+            r.front.draw();
         }
     }
 
@@ -336,7 +342,7 @@ class Redbat
             frameY -= titlebarHeight;
         }
         auto frame = new Frame(root, Geometry(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
-                cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2), frameBorderWidth));
+                cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2), frameBorderWidth), titlebarGC);
         auto titlebar = new Titlebar(frame, Geometry(0, 0, cast(ushort)(geo.width + geo.borderWidth * 2), titlebarHeight, 0));
         immutable uint mask = XCB_EVENT_MASK_PROPERTY_CHANGE;
         xcb_change_window_attributes(connection, client, XCB_CW_EVENT_MASK, &mask);

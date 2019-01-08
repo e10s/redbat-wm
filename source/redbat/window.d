@@ -60,8 +60,9 @@ class Frame : Window
 {
     Titlebar titlebar; // child
     Window client; // child
-
-    this(Window root, Geometry geo)
+    bool focused;
+    xcb_gcontext_t[] titlebarGC;
+    this(Window root, Geometry geo, in xcb_gcontext_t[] titlebarGC)
     {
         auto frame = xcb_generate_id(root.connection);
         super(root, frame);
@@ -69,6 +70,7 @@ class Frame : Window
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, frame, root.window, geo.x, geo.y, geo.width, geo.height,
                 geo.borderWidth, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_EVENT_MASK, &mask);
 
+        this.titlebarGC = titlebarGC.dup;
     }
 
     void reparentClient(xcb_window_t client)
@@ -108,12 +110,14 @@ class Frame : Window
 
     void onFocused()
     {
-
+        focused = true;
+        draw();
     }
 
     void onUnforcused()
     {
-
+        focused = false;
+        draw();
     }
 
     void close(xcb_timestamp_t time = XCB_CURRENT_TIME)
@@ -156,6 +160,11 @@ class Frame : Window
         };
         // dfmt on
         xcb_send_event(connection, 0, client.window, XCB_EVENT_MASK_NO_EVENT, cast(char*)&clientMessageEvent);
+    }
+
+    void draw()
+    {
+        titlebar.draw(titlebarGC[focused]);
     }
 }
 
