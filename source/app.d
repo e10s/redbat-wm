@@ -332,12 +332,13 @@ class Redbat
             frameY -= frameBorderWidth;
             frameY -= titlebarHeight;
         }
-        auto frame = new Frame(root, Geometry(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
-                cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2), frameBorderWidth), titlebarAppearance);
-        auto titlebar = new Titlebar(frame, Geometry(0, 0, cast(ushort)(geo.width + geo.borderWidth * 2), titlebarHeight, 0));
+
         immutable uint mask = XCB_EVENT_MASK_PROPERTY_CHANGE;
         xcb_change_window_attributes(connection, client, XCB_CW_EVENT_MASK, &mask);
 
+        auto frame = new Frame(root, Geometry(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
+                cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2), frameBorderWidth), titlebarAppearance);
+        frame.createTitlebar();
         frame.reparentClient(client);
         frame.mapAll();
 

@@ -73,6 +73,15 @@ class Frame : Window
         this.titlebarAppearance = titlebarAppearance;
     }
 
+    Titlebar createTitlebar()
+    {
+        if (titlebar is null)
+        {
+            titlebar = new Titlebar(this, Geometry(0, 0, geometry.width, titlebarAppearance.height, 0));
+        }
+        return titlebar;
+    }
+
     void reparentClient(xcb_window_t client)
     {
         this.client = new Window(this, client);
