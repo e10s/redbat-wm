@@ -55,8 +55,7 @@ class Redbat
 
     void run()
     {
-        immutable uint mask = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
-            | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
+        immutable uint mask = XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
         auto cookie = xcb_change_window_attributes_checked(connection, root.window, XCB_CW_EVENT_MASK, &mask);
         enforce(xcb_request_check(connection, cookie) is null, "Another wm is running");
 
