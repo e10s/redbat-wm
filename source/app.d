@@ -266,7 +266,10 @@ class Redbat
                     }
                 }
 
-                focusWindow(frame, event.time);
+                if (!frame.focused)
+                {
+                    focusWindow(frame, event.time);
+                }
             }
             else
             {
