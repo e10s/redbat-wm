@@ -185,7 +185,7 @@ class Titlebar : Window
         frame.titlebar = this;
         auto titlebar = xcb_generate_id(frame.connection);
         super(frame, titlebar);
-        uint[] values = [screen.white_pixel, XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_EXPOSURE];
+        uint[] values = [screen.white_pixel, XCB_EVENT_MASK_EXPOSURE];
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, titlebar, frame.window, geo.x, geo.y, geo.width,
                 geo.height, geo.borderWidth, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual,
                 XCB_CW_BACK_PIXEL | XCB_CW_EVENT_MASK, values.ptr);

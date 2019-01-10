@@ -17,6 +17,16 @@ class Redbat
     immutable ushort frameBorderWidth = 3;
     immutable ushort titlebarHeight = 30;
 
+    struct DragManager
+    {
+        bool inDrag;
+        short lastRootX;
+        short lastRootY;
+        Frame frame;
+    }
+
+    DragManager titlebarDragManager;
+
     this()
     {
         int screenNum;
@@ -45,7 +55,8 @@ class Redbat
 
     void run()
     {
-        immutable uint mask = XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
+        immutable uint mask = XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
+            | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
         auto cookie = xcb_change_window_attributes_checked(connection, root.window, XCB_CW_EVENT_MASK, &mask);
         enforce(xcb_request_check(connection, cookie) is null, "Another wm is running");
 
@@ -221,6 +232,27 @@ class Redbat
             if (!r.empty)
             {
                 auto frame = r.front;
+                if (event.detail == XCB_BUTTON_INDEX_1)
+                {
+                    auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection,
+                            root.window, frame.titlebar.window, event.root_x, event.root_y), null);
+                    if (reply is null)
+                    {
+                        warning("Failed to translate coords");
+                        return;
+                    }
+
+                    immutable titlebarGeo = frame.titlebar.geometry;
+                    if ( /*0 <= reply.dst_x && */ reply.dst_x < titlebarGeo.width && /*0 <= reply.dst_y &&*/ reply.dst_y
+                            < titlebarGeo.height) // event is in titlebar region
+                            {
+                        titlebarDragManager.inDrag = true;
+                        titlebarDragManager.lastRootX = event.root_x;
+                        titlebarDragManager.lastRootY = event.root_y;
+                        titlebarDragManager.frame = frame;
+                    }
+                }
+
                 if (event.detail == XCB_BUTTON_INDEX_2)
                 {
                     auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection,
@@ -252,19 +284,43 @@ class Redbat
             }
             else
             {
-                infof("Button presse event is detected above unmanaged window %#x", event.child);
+                warningf("Button presse event is detected above unmanaged window %#x", event.child);
             }
         }
     }
 
     void onButtonRelease(xcb_button_release_event_t* event)
     {
-        info(*event);
+        if (titlebarDragManager.inDrag && event.detail == XCB_BUTTON_INDEX_1)
+        {
+            titlebarDragManager.inDrag = false;
+        }
     }
 
     void onMotionNotify(xcb_motion_notify_event_t* event)
     {
-        info(*event);
+        // XXX: assume event.event to be root
+        infof("%#x %#x", event.event, event.child);
+
+        import std.algorithm.searching : canFind;
+
+        if (titlebarDragManager.inDrag && frames[].canFind(titlebarDragManager.frame) && event.state & XCB_EVENT_MASK_BUTTON_1_MOTION)
+        {
+            infof("Dragging titlebar %#x", titlebarDragManager.frame.titlebar.window);
+            infof("Pointer(x, y) = (%s, %s) => (%s, %s)", titlebarDragManager.lastRootX, titlebarDragManager.lastRootY,
+                    event.root_x, event.root_y);
+
+            auto geo = titlebarDragManager.frame.geometry;
+            geo.x += event.root_x - titlebarDragManager.lastRootX;
+            geo.y += event.root_y - titlebarDragManager.lastRootY;
+            titlebarDragManager.frame.geometry = geo;
+            titlebarDragManager.lastRootX = event.root_x;
+            titlebarDragManager.lastRootY = event.root_y;
+        }
+        else
+        {
+            titlebarDragManager.inDrag = false;
+        }
     }
 
     void onFocusIn(xcb_focus_in_event_t* event)
@@ -274,7 +330,6 @@ class Redbat
         import std.algorithm.searching : find;
 
         auto r = frames[].find!"a.window==b"(event.event);
-
         if (r.empty)
         {
             warningf("Unmanaged frame %#x", event.event);
@@ -290,7 +345,6 @@ class Redbat
         import std.algorithm.searching : find;
 
         auto r = frames[].find!"a.window==b"(event.event);
-
         if (r.empty)
         {
             warningf("Unmanaged frame %#x", event.event);
@@ -313,11 +367,9 @@ class Redbat
 
         auto frame = r.front;
         infof("unmap %#x, frame %#x", event.window, frame.window);
-
         frame.unreparentClient();
         frame.destroy_();
         infof("destroy frame %#x", frame.window);
-
         frames.removeKey(frame);
     }
 
@@ -335,13 +387,11 @@ class Redbat
 
         immutable uint mask = XCB_EVENT_MASK_PROPERTY_CHANGE;
         xcb_change_window_attributes(connection, client, XCB_CW_EVENT_MASK, &mask);
-
         auto frame = new Frame(root, Geometry(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
                 cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2), frameBorderWidth), titlebarAppearance);
         frame.createTitlebar();
         frame.reparentClient(client);
         frame.mapAll();
-
         frames.insert(frame);
         return frame.window;
     }
@@ -353,9 +403,7 @@ class Redbat
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
     {
-        infof("pw = (%#x, %#x), xy = (%s, %s), wh = (%s, %s)", event.parent, event.window, event.x, event.y, event.width, event.height);
-
-        // Needed to handle manually
+        infof("pw = (%#x, %#x), xy = (%s, %s), wh = (%s, %s)", event.parent, event.window, event.x, event.y, event.width, event.height); // Needed to handle manually
         if (event.parent == root.window)
         {
             infof("ConfigReq from unmanaged client: %#x", event.window);
