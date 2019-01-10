@@ -244,7 +244,8 @@ class Redbat
                     }
 
                     immutable titlebarGeo = frame.titlebar.geometry;
-                    immutable ret = 0 <= reply.dst_x && reply.dst_x < titlebarGeo.width && 0 <= reply.dst_y && reply.dst_y < titlebarGeo.height;
+                    immutable ret = 0 <= reply.dst_x && reply.dst_x < titlebarGeo.width && 0 <= reply.dst_y
+                        && reply.dst_y < titlebarGeo.height;
                     free(reply);
                     return ret;
                 }
@@ -383,7 +384,17 @@ class Redbat
 
     void onMapRequest(xcb_map_request_event_t* event)
     {
-        applyFrame(event.window, false);
+        auto reply = xcb_get_window_attributes_reply(connection, xcb_get_window_attributes(connection, event.window), null);
+        if (reply is null)
+        {
+            return;
+        }
+
+        if (!reply.override_redirect)
+        {
+            applyFrame(event.window, false);
+        }
+        free(reply);
     }
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
