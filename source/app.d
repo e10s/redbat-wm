@@ -232,55 +232,40 @@ class Redbat
             if (!r.empty)
             {
                 auto frame = r.front;
-                if (event.detail == XCB_BUTTON_INDEX_1)
+
+                auto isRootXYWithinTitlebar(short rootX, short rootY)
                 {
                     auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection,
-                            root.window, frame.titlebar.window, event.root_x, event.root_y), null);
+                            root.window, frame.titlebar.window, rootX, rootY), null);
                     if (reply is null)
                     {
                         warning("Failed to translate coords");
-                        return;
+                        return false;
                     }
 
                     immutable titlebarGeo = frame.titlebar.geometry;
-                    if ( /*0 <= reply.dst_x && */ reply.dst_x < titlebarGeo.width && /*0 <= reply.dst_y &&*/ reply.dst_y
-                            < titlebarGeo.height) // event is in titlebar region
-                            {
+                    immutable ret = 0 <= reply.dst_x && reply.dst_x < titlebarGeo.width && 0 <= reply.dst_y && reply.dst_y < titlebarGeo.height;
+                    free(reply);
+                    return ret;
+                }
+
+                if (isRootXYWithinTitlebar(event.root_x, event.root_y))
+                {
+                    if (event.detail == XCB_BUTTON_INDEX_1)
+                    {
                         titlebarDragManager.inDrag = true;
                         titlebarDragManager.lastRootX = event.root_x;
                         titlebarDragManager.lastRootY = event.root_y;
                         titlebarDragManager.frame = frame;
                     }
-                }
-
-                if (event.detail == XCB_BUTTON_INDEX_2)
-                {
-                    auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection,
-                            root.window, frame.titlebar.window, event.root_x, event.root_y), null);
-                    if (reply is null)
+                    else if (event.detail == XCB_BUTTON_INDEX_2)
                     {
-                        warning("Failed to translate coords");
+                        closeWindow(frame, event.time);
                         return;
                     }
-
-                    immutable titlebarGeo = frame.titlebar.geometry;
-                    if ( /*0 <= reply.dst_x && */ reply.dst_x < titlebarGeo.width && /*0 <= reply.dst_y &&*/ reply.dst_y
-                            < titlebarGeo.height) // event is in titlebar region
-                            {
-                        closeWindow(frame, event.time);
-                    }
-                    else
-                    {
-                        focusWindow(frame, event.time);
-                    }
-                    import core.stdc.stdlib : free;
-
-                    free(reply);
                 }
-                else
-                {
-                    focusWindow(frame, event.time);
-                }
+
+                focusWindow(frame, event.time);
             }
             else
             {
