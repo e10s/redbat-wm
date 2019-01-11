@@ -232,6 +232,24 @@ class Redbat
         }
     }
 
+    bool isRootXYWithinTitlebar(Frame frame, short rootX, short rootY)
+    {
+        auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection, root.window,
+                frame.titlebar.window, rootX, rootY), null);
+        if (reply is null)
+        {
+            warning("Failed to translate coords");
+            return false;
+        }
+
+        immutable titlebarGeo = frame.titlebar.geometry;
+        immutable ret = 0 <= reply.dst_x && reply.dst_x < titlebarGeo.width && 0 <= reply.dst_y && reply.dst_y < titlebarGeo.height;
+        infof("(x, y) = (%s, %s), %s", reply.dst_x, reply.dst_y, ret);
+        free(reply);
+
+        return ret;
+    }
+
     void onButtonPress(xcb_button_press_event_t* event)
     {
         // XXX: assume event.event to be root
@@ -245,24 +263,7 @@ class Redbat
             {
                 auto frame = r.front;
 
-                auto isRootXYWithinTitlebar(short rootX, short rootY)
-                {
-                    auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection,
-                            root.window, frame.titlebar.window, rootX, rootY), null);
-                    if (reply is null)
-                    {
-                        warning("Failed to translate coords");
-                        return false;
-                    }
-
-                    immutable titlebarGeo = frame.titlebar.geometry;
-                    immutable ret = 0 <= reply.dst_x && reply.dst_x < titlebarGeo.width && 0 <= reply.dst_y
-                        && reply.dst_y < titlebarGeo.height;
-                    free(reply);
-                    return ret;
-                }
-
-                if (isRootXYWithinTitlebar(event.root_x, event.root_y))
+                if (isRootXYWithinTitlebar(frame, event.root_x, event.root_y))
                 {
                     if (event.detail == XCB_BUTTON_INDEX_1)
                     {
