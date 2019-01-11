@@ -66,6 +66,19 @@ class Redbat
         xcb_grab_button(connection, 0, root.window, XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
                 XCB_GRAB_MODE_SYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, XCB_BUTTON_INDEX_ANY, XCB_MOD_MASK_ANY);
 
+        {
+            immutable cursorStyle = xcb_font_t(68); // XC_left_ptr
+
+            immutable font = xcb_generate_id(connection);
+            xcb_open_font(connection, font, "cursor".length, "cursor");
+            immutable cursor = xcb_generate_id(connection);
+            xcb_create_glyph_cursor(connection, cursor, font, font, cursorStyle, cursorStyle + 1, 0, 0, ushort.max,
+                    ushort.max, ushort.max, ushort.max);
+            immutable uint mask2 = XCB_CW_CURSOR;
+            xcb_change_window_attributes(connection, root.window, mask2, &cursor);
+            xcb_free_cursor(connection, cursor);
+        }
+
         xcb_flush(connection);
 
         while (true)
