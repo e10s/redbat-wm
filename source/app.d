@@ -55,7 +55,8 @@ class Redbat
 
     void run()
     {
-        immutable uint mask = XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
+        immutable uint mask = XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_POINTER_MOTION
+            | XCB_EVENT_MASK_BUTTON_1_MOTION | XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT;
         auto cookie = xcb_change_window_attributes_checked(connection, root.window, XCB_CW_EVENT_MASK, &mask);
         enforce(xcb_request_check(connection, cookie) is null, "Another wm is running");
 
@@ -302,7 +303,7 @@ class Redbat
     void onMotionNotify(xcb_motion_notify_event_t* event)
     {
         // XXX: assume event.event to be root
-        infof("%#x %#x", event.event, event.child);
+        //infof("%#x %#x", event.event, event.child);
 
         import std.algorithm.searching : canFind;
 
@@ -318,11 +319,22 @@ class Redbat
             titlebarDragManager.frame.geometry = geo;
             titlebarDragManager.lastRootX = event.root_x;
             titlebarDragManager.lastRootY = event.root_y;
+            return;
         }
-        else
+
+        titlebarDragManager.inDrag = false;
+
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find!"a.window==b"(event.child);
+        if (!r.empty)
         {
-            titlebarDragManager.inDrag = false;
+            if (isRootXYWithinTitlebar(r.front, event.root_x, event.root_y))
+            {
+                infof("On titlebar of frame %#x", r.front.window);
+            }
         }
+
     }
 
     void onFocusIn(xcb_focus_in_event_t* event)
