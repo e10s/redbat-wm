@@ -259,7 +259,7 @@ class Redbat
                     if (event.detail == XCB_BUTTON_INDEX_1)
                     {
                         titlebarDragManager.inDrag = true;
-                        cursorManager.setStyle(CursorStyle.Moving);
+                        cursorManager.setStyle(CursorStyle.moving);
                         titlebarDragManager.lastRootX = event.root_x;
                         titlebarDragManager.lastRootY = event.root_y;
                         titlebarDragManager.frame = frame;
@@ -288,7 +288,7 @@ class Redbat
         if (titlebarDragManager.inDrag && event.detail == XCB_BUTTON_INDEX_1)
         {
             titlebarDragManager.inDrag = false;
-            cursorManager.setStyle(CursorStyle.Normal);
+            cursorManager.setStyle(CursorStyle.normal);
         }
     }
 
@@ -315,15 +315,99 @@ class Redbat
         }
 
         titlebarDragManager.inDrag = false;
-        cursorManager.setStyle(CursorStyle.Normal);
+
         import std.algorithm.searching : find;
 
         auto r = frames[].find!"a.window==b"(event.child);
-        if (!r.empty)
+        if (r.empty)
         {
-            if (isRootXYWithinTitlebar(r.front, event.root_x, event.root_y))
+            cursorManager.setStyle(CursorStyle.normal);
+            return;
+        }
+
+        auto frame = r.front;
+        if (isRootXYWithinTitlebar(frame, event.root_x, event.root_y))
+        {
+            infof("On titlebar of frame %#x", frame.window);
+            cursorManager.setStyle(CursorStyle.normal);
+            return;
+        }
+
+        auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection, root.window,
+                frame.window, event.root_x, event.root_y), null);
+        if (reply is null)
+        {
+            warning("Failed to translate coords");
+            cursorManager.setStyle(CursorStyle.normal);
+            return;
+        }
+        scope (exit)
+        {
+            free(reply);
+        }
+
+        enum ushort aroundCorner = 8;
+        immutable frameGeo = frame.geometry;
+        // infof("(x, y) = (%s, %s)", reply.dst_x, reply.dst_y);
+
+        if (reply.dst_x < 0) // left border
+        {
+            if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
             {
-                infof("On titlebar of frame %#x", r.front.window);
+                cursorManager.setStyle(CursorStyle.topLeft);
+            }
+            else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
+            {
+                cursorManager.setStyle(CursorStyle.bottomLeft);
+            }
+            else
+            {
+                cursorManager.setStyle(CursorStyle.left);
+            }
+        }
+        else if (frameGeo.width <= reply.dst_x) // right border
+        {
+            if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
+            {
+                cursorManager.setStyle(CursorStyle.topRight);
+            }
+            else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
+            {
+                cursorManager.setStyle(CursorStyle.bottomRight);
+            }
+            else
+            {
+                cursorManager.setStyle(CursorStyle.right);
+            }
+        }
+        else if (reply.dst_y < 0) // top border
+        {
+            if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
+            {
+                cursorManager.setStyle(CursorStyle.topLeft);
+            }
+            else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
+            {
+                cursorManager.setStyle(CursorStyle.topRight);
+            }
+            else
+            {
+                cursorManager.setStyle(CursorStyle.top);
+            }
+        }
+        else if (frameGeo.height <= reply.dst_y) // bottom border
+        {
+            if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
+            {
+                cursorManager.setStyle(CursorStyle.bottomLeft);
+            }
+            else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
+            {
+                cursorManager.setStyle(CursorStyle.bottomRight);
+            }
+            else
+            {
+                cursorManager.setStyle(CursorStyle.bottom);
             }
         }
     }

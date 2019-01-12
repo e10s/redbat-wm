@@ -4,13 +4,22 @@ import xcb.xcb;
 
 enum CursorStyle
 {
-    Normal,
-    Moving
+    normal,
+    moving,
+
+    top,
+    bottom,
+    left,
+    right,
+
+    topLeft,
+    topRight,
+    bottomLeft,
+    bottomRight,
 }
 
 class CursorManager
 {
-
     import redbat.window;
 
     private Window root;
@@ -19,11 +28,14 @@ class CursorManager
     this(Window root)
     {
         this.root = root;
-        immutable styleNormal = FontCursor.XC_left_ptr;
-        immutable styleMoving = FontCursor.XC_fleur;
+        immutable styles = [
+            FontCursor.XC_left_ptr, FontCursor.XC_fleur, FontCursor.XC_top_side, FontCursor.XC_bottom_side,
+            FontCursor.XC_left_side, FontCursor.XC_right_side, FontCursor.XC_top_left_corner,
+            FontCursor.XC_top_right_corner, FontCursor.XC_bottom_left_corner, FontCursor.XC_bottom_right_corner
+        ];
         immutable font = xcb_generate_id(root.connection);
         xcb_open_font(root.connection, font, "cursor".length, "cursor");
-        foreach (i, style; [styleNormal, styleMoving])
+        foreach (i, style; styles)
         {
             auto cid = xcb_generate_id(root.connection);
             cursor[cast(CursorStyle) i] = cid;
