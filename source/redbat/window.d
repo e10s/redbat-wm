@@ -73,6 +73,17 @@ class Frame : Window
         this.titlebarAppearance = titlebarAppearance;
     }
 
+    override @property Geometry geometry()
+    {
+        return super.geometry;
+    }
+
+    override @property Geometry geometry(Geometry newGeo)
+    {
+        super.geometry(newGeo);
+        return newGeo;
+    }
+
     Titlebar createTitlebar()
     {
         if (titlebar is null)
