@@ -80,6 +80,28 @@ class Frame : Window
 
     override @property Geometry geometry(Geometry newGeo)
     {
+        immutable oldGeo = geometry;
+        immutable clientGeo = client.geometry;
+        immutable minClientAreaWidth = cast(ushort)(1 + clientGeo.borderWidth * 2);
+        immutable minClientAreaHeight = cast(ushort)(1 + clientGeo.borderWidth * 2);
+
+        import std.algorithm.comparison : max;
+
+        newGeo.width = max(minClientAreaWidth, titlebarAppearance.minWidth, newGeo.width);
+        newGeo.height = max(cast(ushort)(minClientAreaHeight + titlebarAppearance.height), newGeo.height);
+        immutable dw = cast(int) newGeo.width - oldGeo.width;
+        immutable dh = cast(int) newGeo.height - oldGeo.height;
+
+        if (dw || dh)
+        {
+            immutable uint[] clientValues = [clientGeo.width + dw, clientGeo.height + dh];
+            xcb_configure_window(connection, client.window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, clientValues.ptr);
+        }
+        if (dw)
+        {
+            immutable uint titlebarValue = titlebar.geometry.width + dw;
+            xcb_configure_window(connection, titlebar.window, XCB_CONFIG_WINDOW_WIDTH, &titlebarValue);
+        }
         super.geometry(newGeo);
         return newGeo;
     }
@@ -225,4 +247,5 @@ struct TitlebarAppearance
     uint unfocusedBGColor;
     uint focusedBGColor;
     ushort height = 30;
+    ushort minWidth = 120;
 }

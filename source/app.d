@@ -17,6 +17,8 @@ class Redbat
     TitlebarAppearance titlebarAppearance;
     immutable ushort frameBorderWidth = 3;
     immutable ushort titlebarHeight = 30;
+    immutable ushort titlebarMinWidth = 120;
+
     CursorManager cursorManager;
 
     enum BorderDragMode
@@ -62,7 +64,7 @@ class Redbat
 
         auto cf = new CosmeticFactory(root);
         titlebarAppearance = TitlebarAppearance(cf.createGCWithFG("LightPink"), cf.createGCWithFG("DeepPink"),
-                cf.getPixByColorName("LightSkyBlue"), cf.getPixByColorName("DodgerBlue"), titlebarHeight);
+                cf.getPixByColorName("LightSkyBlue"), cf.getPixByColorName("DodgerBlue"), titlebarHeight, titlebarMinWidth);
         cursorManager = new CursorManager(root);
     }
 
@@ -345,7 +347,7 @@ class Redbat
             import std.algorithm.comparison : max;
 
             geo.width = cast(ushort) max(0, geo.width + dw);
-            geo.height = cast(ushort) max(dragManager.frame.titlebarAppearance.height, geo.height + dh);
+            geo.height = cast(ushort) max(0, geo.height + dh);
         }
 
         final switch (dragManager.lastMode)
@@ -668,8 +670,6 @@ class Redbat
                 return;
             }
             auto frame = r.front;
-            auto geoClient = frame.client.geometry;
-            auto geoTitlebar = frame.titlebar.geometry;
             auto geoFrame = frame.geometry;
             ushort miscValueMask;
             uint[] miscValues;
@@ -684,25 +684,22 @@ class Redbat
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_WIDTH)
             {
-                geoClient.width = event.width;
-                geoTitlebar.width = event.width;
-                geoTitlebar.width += event.border_width * 2;
                 geoFrame.width = event.width;
                 geoFrame.width += event.border_width * 2;
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_HEIGHT)
             {
-                geoClient.height = event.height;
                 geoFrame.height = event.height;
-                geoFrame.height += geoTitlebar.height;
+                geoFrame.height += frame.titlebar.geometry.height;
                 geoFrame.height += event.border_width * 2;
-            }
-            if (event.value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
-            {
-                geoClient.borderWidth = event.border_width;
             }
 
             // Set values in this order!!
+            if (event.value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
+            {
+                miscValueMask |= XCB_CONFIG_WINDOW_BORDER_WIDTH;
+                miscValues ~= event.border_width;
+            }
             if (event.value_mask & XCB_CONFIG_WINDOW_SIBLING)
             {
                 miscValueMask |= XCB_CONFIG_WINDOW_SIBLING;
@@ -714,14 +711,12 @@ class Redbat
                 miscValues ~= event.stack_mode;
             }
 
-            frame.client.geometry = geoClient;
             if (miscValueMask)
             {
                 xcb_configure_window(connection, event.window, miscValueMask, miscValues.ptr);
             }
 
             frame.geometry = geoFrame;
-            frame.titlebar.geometry = geoTitlebar;
         }
     }
 
