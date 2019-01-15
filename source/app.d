@@ -50,7 +50,6 @@ class Redbat
         short initRootX, initRootY;
         short currentRootX, currentRootY;
         Geometry initGeo;
-        bool withinBorder;
         DragMode mode;
         BorderDragDirection dir;
     }
@@ -269,6 +268,92 @@ class Redbat
         return ret;
     }
 
+    alias WithinBorderDetail = BorderDragDirection;
+    enum ushort aroundCorner = 8;
+
+    WithinBorderDetail isRootXYWithinBorder(Frame frame, short rootX, short rootY)
+    {
+        auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection, root.window,
+                frame.window, rootX, rootY), null);
+        if (reply is null)
+        {
+            warning("Failed to translate coords");
+            return WithinBorderDetail.none;
+        }
+        scope (exit)
+        {
+            free(reply);
+        }
+
+        immutable frameGeo = frame.geometry;
+        if (0 <= reply.dst_x + frameGeo.borderWidth && reply.dst_x < frameGeo.width + frameGeo.borderWidth
+                && 0 <= reply.dst_y + frameGeo.borderWidth && reply.dst_y < frameGeo.height + frameGeo.borderWidth)
+        {
+            if (reply.dst_x < 0) // left border
+            {
+                if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
+                {
+                    return BorderDragDirection.topLeft;
+                }
+                else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
+                {
+                    return BorderDragDirection.bottomLeft;
+                }
+                else
+                {
+                    return BorderDragDirection.left;
+                }
+            }
+            else if (frameGeo.width <= reply.dst_x) // right border
+            {
+                if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
+                {
+                    return BorderDragDirection.topRight;
+                }
+                else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
+                {
+                    return BorderDragDirection.bottomRight;
+                }
+                else
+                {
+                    return BorderDragDirection.right;
+                }
+            }
+            else if (reply.dst_y < 0) // top border
+            {
+                if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
+                {
+                    return BorderDragDirection.topLeft;
+                }
+                else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
+                {
+                    return BorderDragDirection.topRight;
+                }
+                else
+                {
+                    return BorderDragDirection.top;
+                }
+            }
+            else if (frameGeo.height <= reply.dst_y) // bottom border
+            {
+                if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
+                {
+                    return BorderDragDirection.bottomLeft;
+                }
+                else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
+                {
+                    return BorderDragDirection.bottomRight;
+                }
+                else
+                {
+                    return BorderDragDirection.bottom;
+                }
+            }
+        }
+
+        return WithinBorderDetail.none;
+    }
+
     void onButtonPress(xcb_button_press_event_t* event)
     {
         // XXX: assume event.event to be root
@@ -287,7 +372,7 @@ class Redbat
                     if (event.detail == XCB_BUTTON_INDEX_1)
                     {
                         dragManager = DragManager(frame, true, event.root_x, event.root_y, event.root_x, event.root_y,
-                                frame.geometry, false, DragMode.titlebar);
+                                frame.geometry, DragMode.titlebar);
                         cursorManager.setStyle(CursorStyle.moving);
                     }
                     else if (event.detail == XCB_BUTTON_INDEX_2)
@@ -296,12 +381,16 @@ class Redbat
                         return;
                     }
                 }
-
-                if (dragManager.withinBorder)
+                else if (immutable d = isRootXYWithinBorder(frame, event.root_x, event.root_y))
                 {
                     dragManager = DragManager(frame, true, event.root_x, event.root_y, event.root_x, event.root_y,
-                            frame.geometry, true, DragMode.border, dragManager.dir);
+                            frame.geometry, DragMode.border, d);
                 }
+                else
+                {
+                    cursorManager.setStyle(CursorStyle.normal);
+                }
+
                 if (!frame.focused)
                 {
                     focusWindow(frame, event.time);
@@ -314,7 +403,7 @@ class Redbat
         }
     }
 
-    void setPointerState(Frame frame, short rootX, short rootY)
+    void setCursor(Frame frame, short rootX, short rootY)
     {
         if (isRootXYWithinTitlebar(frame, rootX, rootY))
         {
@@ -323,96 +412,38 @@ class Redbat
             return;
         }
 
-        auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection, root.window,
-                frame.window, rootX, rootY), null);
-        if (reply is null)
+        immutable d = isRootXYWithinBorder(frame, rootX, rootY);
+        with (WithinBorderDetail)
         {
-            warning("Failed to translate coords");
-            cursorManager.setStyle(CursorStyle.normal);
-            return;
-        }
-        scope (exit)
-        {
-            free(reply);
-        }
-
-        // Cursor is within frame border
-        dragManager.withinBorder = true;
-
-        enum ushort aroundCorner = 8;
-        immutable frameGeo = frame.geometry;
-        // infof("(x, y) = (%s, %s)", reply.dst_x, reply.dst_y);
-
-        if (reply.dst_x < 0) // left border
-        {
-            if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
+            final switch (d)
             {
-                dragManager.dir = BorderDragDirection.topLeft;
-                cursorManager.setStyle(CursorStyle.topLeft);
-            }
-            else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
-            {
-                dragManager.dir = BorderDragDirection.bottomLeft;
-                cursorManager.setStyle(CursorStyle.bottomLeft);
-            }
-            else
-            {
-                dragManager.dir = BorderDragDirection.left;
-                cursorManager.setStyle(CursorStyle.left);
-            }
-        }
-        else if (frameGeo.width <= reply.dst_x) // right border
-        {
-            if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
-            {
-                dragManager.dir = BorderDragDirection.topRight;
-                cursorManager.setStyle(CursorStyle.topRight);
-            }
-            else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
-            {
-                dragManager.dir = BorderDragDirection.bottomRight;
-                cursorManager.setStyle(CursorStyle.bottomRight);
-            }
-            else
-            {
-                dragManager.dir = BorderDragDirection.right;
-                cursorManager.setStyle(CursorStyle.right);
-            }
-        }
-        else if (reply.dst_y < 0) // top border
-        {
-            if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
-            {
-                dragManager.dir = BorderDragDirection.topLeft;
-                cursorManager.setStyle(CursorStyle.topLeft);
-            }
-            else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
-            {
-                dragManager.dir = BorderDragDirection.topRight;
-                cursorManager.setStyle(CursorStyle.topRight);
-            }
-            else
-            {
-                dragManager.dir = BorderDragDirection.top;
+            case none:
+                cursorManager.setStyle(CursorStyle.normal);
+                return;
+            case top:
                 cursorManager.setStyle(CursorStyle.top);
-            }
-        }
-        else if (frameGeo.height <= reply.dst_y) // bottom border
-        {
-            if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
-            {
-                dragManager.dir = BorderDragDirection.bottomLeft;
-                cursorManager.setStyle(CursorStyle.bottomLeft);
-            }
-            else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
-            {
-                dragManager.dir = BorderDragDirection.bottomRight;
-                cursorManager.setStyle(CursorStyle.bottomRight);
-            }
-            else
-            {
-                dragManager.dir = BorderDragDirection.bottom;
+                break;
+            case bottom:
                 cursorManager.setStyle(CursorStyle.bottom);
+                break;
+            case left:
+                cursorManager.setStyle(CursorStyle.left);
+                break;
+            case right:
+                cursorManager.setStyle(CursorStyle.right);
+                break;
+            case topLeft:
+                cursorManager.setStyle(CursorStyle.topLeft);
+                break;
+            case topRight:
+                cursorManager.setStyle(CursorStyle.topRight);
+                break;
+            case bottomLeft:
+                cursorManager.setStyle(CursorStyle.bottomLeft);
+                break;
+            case bottomRight:
+                cursorManager.setStyle(CursorStyle.bottomRight);
+                break;
             }
         }
     }
@@ -427,8 +458,9 @@ class Redbat
 
             auto r = frames[].find!"a.window==b"(event.child);
             if (!r.empty)
+
             {
-                setPointerState(r.front, event.root_x, event.root_y);
+                setCursor(r.front, event.root_x, event.root_y);
             }
 
         }
@@ -588,7 +620,7 @@ class Redbat
             return;
         }
 
-        setPointerState(r.front, event.root_x, event.root_y);
+        setCursor(r.front, event.root_x, event.root_y);
     }
 
     void onFocusIn(xcb_focus_in_event_t* event)
