@@ -314,16 +314,123 @@ class Redbat
         }
     }
 
+    void setPointerState(Frame frame, short rootX, short rootY)
+    {
+        if (isRootXYWithinTitlebar(frame, rootX, rootY))
+        {
+            infof("On titlebar of frame %#x", frame.window);
+            cursorManager.setStyle(CursorStyle.normal);
+            return;
+        }
+
+        auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection, root.window,
+                frame.window, rootX, rootY), null);
+        if (reply is null)
+        {
+            warning("Failed to translate coords");
+            cursorManager.setStyle(CursorStyle.normal);
+            return;
+        }
+        scope (exit)
+        {
+            free(reply);
+        }
+
+        // Cursor is within frame border
+        dragManager.withinBorder = true;
+
+        enum ushort aroundCorner = 8;
+        immutable frameGeo = frame.geometry;
+        // infof("(x, y) = (%s, %s)", reply.dst_x, reply.dst_y);
+
+        if (reply.dst_x < 0) // left border
+        {
+            if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
+            {
+                dragManager.dir = BorderDragDirection.topLeft;
+                cursorManager.setStyle(CursorStyle.topLeft);
+            }
+            else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
+            {
+                dragManager.dir = BorderDragDirection.bottomLeft;
+                cursorManager.setStyle(CursorStyle.bottomLeft);
+            }
+            else
+            {
+                dragManager.dir = BorderDragDirection.left;
+                cursorManager.setStyle(CursorStyle.left);
+            }
+        }
+        else if (frameGeo.width <= reply.dst_x) // right border
+        {
+            if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
+            {
+                dragManager.dir = BorderDragDirection.topRight;
+                cursorManager.setStyle(CursorStyle.topRight);
+            }
+            else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
+            {
+                dragManager.dir = BorderDragDirection.bottomRight;
+                cursorManager.setStyle(CursorStyle.bottomRight);
+            }
+            else
+            {
+                dragManager.dir = BorderDragDirection.right;
+                cursorManager.setStyle(CursorStyle.right);
+            }
+        }
+        else if (reply.dst_y < 0) // top border
+        {
+            if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
+            {
+                dragManager.dir = BorderDragDirection.topLeft;
+                cursorManager.setStyle(CursorStyle.topLeft);
+            }
+            else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
+            {
+                dragManager.dir = BorderDragDirection.topRight;
+                cursorManager.setStyle(CursorStyle.topRight);
+            }
+            else
+            {
+                dragManager.dir = BorderDragDirection.top;
+                cursorManager.setStyle(CursorStyle.top);
+            }
+        }
+        else if (frameGeo.height <= reply.dst_y) // bottom border
+        {
+            if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
+            {
+                dragManager.dir = BorderDragDirection.bottomLeft;
+                cursorManager.setStyle(CursorStyle.bottomLeft);
+            }
+            else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
+            {
+                dragManager.dir = BorderDragDirection.bottomRight;
+                cursorManager.setStyle(CursorStyle.bottomRight);
+            }
+            else
+            {
+                dragManager.dir = BorderDragDirection.bottom;
+                cursorManager.setStyle(CursorStyle.bottom);
+            }
+        }
+    }
+
     void onButtonRelease(xcb_button_release_event_t* event)
     {
+        // XXX: assume event.event to be root
         if (dragManager.inDrag && event.detail == XCB_BUTTON_INDEX_1)
         {
-            if (dragManager.mode == DragMode.titlebar)
-            {
-                cursorManager.setStyle(CursorStyle.normal);
-            }
             dragManager = DragManager();
-            // TODO: Determine if pointer is still at draggable area
+            import std.algorithm.searching : find;
+
+            auto r = frames[].find!"a.window==b"(event.child);
+            if (!r.empty)
+            {
+                setPointerState(r.front, event.root_x, event.root_y);
+            }
+
         }
     }
 
@@ -481,106 +588,7 @@ class Redbat
             return;
         }
 
-        auto frame = r.front;
-        if (isRootXYWithinTitlebar(frame, event.root_x, event.root_y))
-        {
-            infof("On titlebar of frame %#x", frame.window);
-            cursorManager.setStyle(CursorStyle.normal);
-            return;
-        }
-
-        auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection, root.window,
-                frame.window, event.root_x, event.root_y), null);
-        if (reply is null)
-        {
-            warning("Failed to translate coords");
-            cursorManager.setStyle(CursorStyle.normal);
-            return;
-        }
-        scope (exit)
-        {
-            free(reply);
-        }
-
-        // Cursor is within frame border
-        dragManager.withinBorder = true;
-
-        enum ushort aroundCorner = 8;
-        immutable frameGeo = frame.geometry;
-        // infof("(x, y) = (%s, %s)", reply.dst_x, reply.dst_y);
-
-        if (reply.dst_x < 0) // left border
-        {
-            if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
-            {
-                dragManager.dir = BorderDragDirection.topLeft;
-                cursorManager.setStyle(CursorStyle.topLeft);
-            }
-            else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
-            {
-                dragManager.dir = BorderDragDirection.bottomLeft;
-                cursorManager.setStyle(CursorStyle.bottomLeft);
-            }
-            else
-            {
-                dragManager.dir = BorderDragDirection.left;
-                cursorManager.setStyle(CursorStyle.left);
-            }
-        }
-        else if (frameGeo.width <= reply.dst_x) // right border
-        {
-            if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
-            {
-                dragManager.dir = BorderDragDirection.topRight;
-                cursorManager.setStyle(CursorStyle.topRight);
-            }
-            else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
-            {
-                dragManager.dir = BorderDragDirection.bottomRight;
-                cursorManager.setStyle(CursorStyle.bottomRight);
-            }
-            else
-            {
-                dragManager.dir = BorderDragDirection.right;
-                cursorManager.setStyle(CursorStyle.right);
-            }
-        }
-        else if (reply.dst_y < 0) // top border
-        {
-            if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
-            {
-                dragManager.dir = BorderDragDirection.topLeft;
-                cursorManager.setStyle(CursorStyle.topLeft);
-            }
-            else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
-            {
-                dragManager.dir = BorderDragDirection.topRight;
-                cursorManager.setStyle(CursorStyle.topRight);
-            }
-            else
-            {
-                dragManager.dir = BorderDragDirection.top;
-                cursorManager.setStyle(CursorStyle.top);
-            }
-        }
-        else if (frameGeo.height <= reply.dst_y) // bottom border
-        {
-            if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
-            {
-                dragManager.dir = BorderDragDirection.bottomLeft;
-                cursorManager.setStyle(CursorStyle.bottomLeft);
-            }
-            else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
-            {
-                dragManager.dir = BorderDragDirection.bottomRight;
-                cursorManager.setStyle(CursorStyle.bottomRight);
-            }
-            else
-            {
-                dragManager.dir = BorderDragDirection.bottom;
-                cursorManager.setStyle(CursorStyle.bottom);
-            }
-        }
+        setPointerState(r.front, event.root_x, event.root_y);
     }
 
     void onFocusIn(xcb_focus_in_event_t* event)
