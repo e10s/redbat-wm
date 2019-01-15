@@ -82,13 +82,11 @@ class Frame : Window
     {
         immutable oldGeo = geometry;
         immutable clientGeo = client.geometry;
-        immutable minClientAreaWidth = cast(ushort)(1 + clientGeo.borderWidth * 2);
-        immutable minClientAreaHeight = cast(ushort)(1 + clientGeo.borderWidth * 2);
 
-        import std.algorithm.comparison : max;
-
-        newGeo.width = max(minClientAreaWidth, titlebarAppearance.minWidth, newGeo.width);
-        newGeo.height = max(cast(ushort)(minClientAreaHeight + titlebarAppearance.height), newGeo.height);
+        if (oldGeo.width != newGeo.width || oldGeo.height != newGeo.height)
+        {
+            newGeo = correctNewGeometry(newGeo);
+        }
         immutable dw = cast(int) newGeo.width - oldGeo.width;
         immutable dh = cast(int) newGeo.height - oldGeo.height;
 
@@ -103,6 +101,20 @@ class Frame : Window
             xcb_configure_window(connection, titlebar.window, XCB_CONFIG_WINDOW_WIDTH, &titlebarValue);
         }
         super.geometry(newGeo);
+        return newGeo;
+    }
+
+    Geometry correctNewGeometry(Geometry newGeo)
+    {
+        immutable oldGeo = geometry;
+        immutable clientGeo = client.geometry;
+        immutable minClientAreaWidth = cast(ushort)(1 + clientGeo.borderWidth * 2);
+        immutable minClientAreaHeight = cast(ushort)(1 + clientGeo.borderWidth * 2);
+
+        import std.algorithm.comparison : max;
+
+        newGeo.width = max(minClientAreaWidth, titlebarAppearance.minWidth, newGeo.width);
+        newGeo.height = max(cast(ushort)(minClientAreaHeight + titlebarAppearance.height), newGeo.height);
         return newGeo;
     }
 

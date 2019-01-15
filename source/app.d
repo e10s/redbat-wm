@@ -21,10 +21,16 @@ class Redbat
 
     CursorManager cursorManager;
 
-    enum BorderDragMode
+    enum DragMode
     {
         none,
         titlebar,
+        border
+    }
+
+    enum BorderDragDirection
+    {
+        none,
 
         top,
         bottom,
@@ -39,12 +45,14 @@ class Redbat
 
     struct DragManager
     {
-        bool inDrag;
-        short lastRootX;
-        short lastRootY;
         Frame frame;
+        bool inDrag;
+        short initRootX, initRootY;
+        short currentRootX, currentRootY;
+        Geometry initGeo;
         bool withinBorder;
-        BorderDragMode lastMode;
+        DragMode mode;
+        BorderDragDirection dir;
     }
 
     DragManager dragManager;
@@ -278,11 +286,9 @@ class Redbat
                 {
                     if (event.detail == XCB_BUTTON_INDEX_1)
                     {
-                        dragManager.inDrag = true;
+                        dragManager = DragManager(frame, true, event.root_x, event.root_y, event.root_x, event.root_y,
+                                frame.geometry, false, DragMode.titlebar);
                         cursorManager.setStyle(CursorStyle.moving);
-                        dragManager.lastRootX = event.root_x;
-                        dragManager.lastRootY = event.root_y;
-                        dragManager.frame = frame;
                     }
                     else if (event.detail == XCB_BUTTON_INDEX_2)
                     {
@@ -293,12 +299,8 @@ class Redbat
 
                 if (dragManager.withinBorder)
                 {
-                    info(dragManager.lastMode);
-
-                    dragManager.inDrag = true;
-                    dragManager.lastRootX = event.root_x;
-                    dragManager.lastRootY = event.root_y;
-                    dragManager.frame = frame;
+                    dragManager = DragManager(frame, true, event.root_x, event.root_y, event.root_x, event.root_y,
+                            frame.geometry, true, DragMode.border, dragManager.dir);
                 }
                 if (!frame.focused)
                 {
@@ -316,83 +318,135 @@ class Redbat
     {
         if (dragManager.inDrag && event.detail == XCB_BUTTON_INDEX_1)
         {
-            dragManager.inDrag = false;
-            if (dragManager.lastMode == BorderDragMode.titlebar)
+            if (dragManager.mode == DragMode.titlebar)
             {
                 cursorManager.setStyle(CursorStyle.normal);
             }
+            dragManager = DragManager();
+            // TODO: Determine if pointer is still at draggable area
         }
     }
 
-    bool doDragging(short rootX, short rootY)
+    bool doDragging()
     {
-        if (!dragManager.inDrag)
+        if (!dragManager.inDrag || dragManager.mode == DragMode.none)
         {
             return false;
         }
 
-        auto geo = dragManager.frame.geometry;
-        immutable dx = rootX - dragManager.lastRootX;
-        immutable dy = rootY - dragManager.lastRootY;
-        infof("Pointer(x, y) = (%s, %s) => (%s, %s)", dragManager.lastRootX, dragManager.lastRootY, rootX, rootY);
+        auto newGeo = dragManager.frame.geometry;
+        const initGeo = dragManager.initGeo;
+        infof("Pointer: start(%s, %s) => current(%s, %s)", dragManager.initRootX, dragManager.initRootY,
+                dragManager.currentRootX, dragManager.currentRootY);
+        immutable dx = dragManager.currentRootX - dragManager.initRootX;
+        immutable dy = dragManager.currentRootY - dragManager.initRootY;
 
-        void moveByDelta(int dx, int dy)
+        void moveByDeltaXFromInit(int dy)
         {
-            geo.x += dx;
-            geo.y += dy;
+            newGeo.x = cast(short)(initGeo.x + dx);
         }
 
-        void resizeByDelta(int dw, int dh)
+        void moveByDeltaYFromInit(int dy)
+        {
+            newGeo.y = cast(short)(initGeo.y + dy);
+        }
+
+        enum CorrectionDetail
+        {
+            none = 0,
+            width = 1 << 0,
+            height = 1 << 1
+        }
+
+        auto resizeByDeltaFromInit(int dw, int dh)
         {
             import std.algorithm.comparison : max;
 
-            geo.width = cast(ushort) max(0, geo.width + dw);
-            geo.height = cast(ushort) max(0, geo.height + dh);
+            newGeo.width = cast(ushort) max(0, initGeo.width + dw);
+            newGeo.height = cast(ushort) max(0, initGeo.height + dh);
+            auto correctedNewGeo = dragManager.frame.correctNewGeometry(newGeo);
+            int correctionDetail;
+            if (correctedNewGeo.width != newGeo.width)
+            {
+                correctionDetail |= CorrectionDetail.width;
+            }
+            if (correctedNewGeo.height != newGeo.height)
+            {
+                correctionDetail |= CorrectionDetail.height;
+            }
+
+            if (correctionDetail)
+            {
+                newGeo = correctedNewGeo;
+            }
+
+            return correctionDetail;
         }
 
-        final switch (dragManager.lastMode)
+        final switch (dragManager.mode)
         {
-        case BorderDragMode.none:
+        case DragMode.none:
             warning("Somehow in drag mode!");
             return false;
-        case BorderDragMode.titlebar:
+        case DragMode.titlebar:
             infof("Dragging titlebar %#x", dragManager.frame.titlebar.window);
-            moveByDelta(dx, dy);
-            break;
-        case BorderDragMode.top:
-            moveByDelta(0, dy);
-            resizeByDelta(0, -dy);
-            break;
-        case BorderDragMode.bottom:
-            resizeByDelta(0, dy);
-            break;
-        case BorderDragMode.left:
-            moveByDelta(dx, 0);
-            resizeByDelta(-dx, 0);
-            break;
-        case BorderDragMode.right:
-            resizeByDelta(dx, 0);
-            break;
-        case BorderDragMode.topLeft:
-            moveByDelta(dx, dy);
-            resizeByDelta(-dx, -dy);
-            break;
-        case BorderDragMode.topRight:
-            moveByDelta(0, dy);
-            resizeByDelta(dx, -dy);
-            break;
-        case BorderDragMode.bottomLeft:
-            moveByDelta(dx, 0);
-            resizeByDelta(-dx, dy);
-            break;
-        case BorderDragMode.bottomRight:
-            resizeByDelta(dx, dy);
+            moveByDeltaXFromInit(dx);
+            moveByDeltaYFromInit(dy);
+            dragManager.frame.geometry = newGeo;
+            return true;
+        case DragMode.border:
             break;
         }
-
-        dragManager.frame.geometry = geo;
-        dragManager.lastRootX = rootX;
-        dragManager.lastRootY = rootY;
+        final switch (dragManager.dir)
+        {
+        case BorderDragDirection.none:
+            return false;
+        case BorderDragDirection.top:
+            if (!(resizeByDeltaFromInit(0, -dy) & CorrectionDetail.height))
+            {
+                moveByDeltaYFromInit(dy);
+            }
+            break;
+        case BorderDragDirection.bottom:
+            resizeByDeltaFromInit(0, dy);
+            break;
+        case BorderDragDirection.left:
+            if (!(resizeByDeltaFromInit(-dx, 0) & CorrectionDetail.width))
+            {
+                moveByDeltaXFromInit(dx);
+            }
+            break;
+        case BorderDragDirection.right:
+            resizeByDeltaFromInit(dx, 0);
+            break;
+        case BorderDragDirection.topLeft:
+            immutable detail = resizeByDeltaFromInit(-dx, -dy);
+            if (!(detail & CorrectionDetail.height))
+            {
+                moveByDeltaYFromInit(dy);
+            }
+            if (!(detail & CorrectionDetail.width))
+            {
+                moveByDeltaXFromInit(dx);
+            }
+            break;
+        case BorderDragDirection.topRight:
+            if (!(resizeByDeltaFromInit(dx, -dy) & CorrectionDetail.height))
+            {
+                moveByDeltaYFromInit(dy);
+            }
+            break;
+        case BorderDragDirection.bottomLeft:
+            if (!(resizeByDeltaFromInit(-dx, dy) & CorrectionDetail.width))
+            {
+                moveByDeltaXFromInit(dx);
+            }
+            break;
+        case BorderDragDirection.bottomRight:
+            resizeByDeltaFromInit(dx, dy);
+            break;
+        }
+        dragManager.frame.geometry = newGeo;
 
         return true;
     }
@@ -402,27 +456,27 @@ class Redbat
         // XXX: assume event.event to be root
         //infof("%#x %#x", event.event, event.child);
 
-        dragManager.withinBorder = false;
-
         if (dragManager.inDrag)
         {
             import std.algorithm.searching : canFind;
 
             if (frames[].canFind(dragManager.frame) && event.state & XCB_EVENT_MASK_BUTTON_1_MOTION)
             {
-                dragManager.inDrag = doDragging(event.root_x, event.root_y);
+                dragManager.currentRootX = event.root_x;
+                dragManager.currentRootY = event.root_y;
+                dragManager.inDrag = doDragging();
                 return;
             }
-            dragManager.inDrag = false;
             warning("Somehow in drag mode!");
         }
 
+        // Not dragging
+        dragManager = DragManager();
         import std.algorithm.searching : find;
 
         auto r = frames[].find!"a.window==b"(event.child);
         if (r.empty)
         {
-            dragManager.lastMode = BorderDragMode.none;
             cursorManager.setStyle(CursorStyle.normal);
             return;
         }
@@ -431,7 +485,6 @@ class Redbat
         if (isRootXYWithinTitlebar(frame, event.root_x, event.root_y))
         {
             infof("On titlebar of frame %#x", frame.window);
-            dragManager.lastMode = BorderDragMode.titlebar;
             cursorManager.setStyle(CursorStyle.normal);
             return;
         }
@@ -441,7 +494,6 @@ class Redbat
         if (reply is null)
         {
             warning("Failed to translate coords");
-            dragManager.lastMode = BorderDragMode.none;
             cursorManager.setStyle(CursorStyle.normal);
             return;
         }
@@ -450,6 +502,7 @@ class Redbat
             free(reply);
         }
 
+        // Cursor is within frame border
         dragManager.withinBorder = true;
 
         enum ushort aroundCorner = 8;
@@ -460,17 +513,17 @@ class Redbat
         {
             if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
             {
-                dragManager.lastMode = BorderDragMode.topLeft;
+                dragManager.dir = BorderDragDirection.topLeft;
                 cursorManager.setStyle(CursorStyle.topLeft);
             }
             else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
             {
-                dragManager.lastMode = BorderDragMode.bottomLeft;
+                dragManager.dir = BorderDragDirection.bottomLeft;
                 cursorManager.setStyle(CursorStyle.bottomLeft);
             }
             else
             {
-                dragManager.lastMode = BorderDragMode.left;
+                dragManager.dir = BorderDragDirection.left;
                 cursorManager.setStyle(CursorStyle.left);
             }
         }
@@ -478,17 +531,17 @@ class Redbat
         {
             if (reply.dst_y + frameGeo.borderWidth < aroundCorner)
             {
-                dragManager.lastMode = BorderDragMode.topRight;
+                dragManager.dir = BorderDragDirection.topRight;
                 cursorManager.setStyle(CursorStyle.topRight);
             }
             else if (reply.dst_y + aroundCorner >= frameGeo.height + frameGeo.borderWidth)
             {
-                dragManager.lastMode = BorderDragMode.bottomRight;
+                dragManager.dir = BorderDragDirection.bottomRight;
                 cursorManager.setStyle(CursorStyle.bottomRight);
             }
             else
             {
-                dragManager.lastMode = BorderDragMode.right;
+                dragManager.dir = BorderDragDirection.right;
                 cursorManager.setStyle(CursorStyle.right);
             }
         }
@@ -496,17 +549,17 @@ class Redbat
         {
             if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
             {
-                dragManager.lastMode = BorderDragMode.topLeft;
+                dragManager.dir = BorderDragDirection.topLeft;
                 cursorManager.setStyle(CursorStyle.topLeft);
             }
             else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
             {
-                dragManager.lastMode = BorderDragMode.topRight;
+                dragManager.dir = BorderDragDirection.topRight;
                 cursorManager.setStyle(CursorStyle.topRight);
             }
             else
             {
-                dragManager.lastMode = BorderDragMode.top;
+                dragManager.dir = BorderDragDirection.top;
                 cursorManager.setStyle(CursorStyle.top);
             }
         }
@@ -514,17 +567,17 @@ class Redbat
         {
             if (reply.dst_x + frameGeo.borderWidth < aroundCorner)
             {
-                dragManager.lastMode = BorderDragMode.bottomLeft;
+                dragManager.dir = BorderDragDirection.bottomLeft;
                 cursorManager.setStyle(CursorStyle.bottomLeft);
             }
             else if (reply.dst_x + aroundCorner >= frameGeo.width + frameGeo.borderWidth)
             {
-                dragManager.lastMode = BorderDragMode.bottomRight;
+                dragManager.dir = BorderDragDirection.bottomRight;
                 cursorManager.setStyle(CursorStyle.bottomRight);
             }
             else
             {
-                dragManager.lastMode = BorderDragMode.bottom;
+                dragManager.dir = BorderDragDirection.bottom;
                 cursorManager.setStyle(CursorStyle.bottom);
             }
         }
