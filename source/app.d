@@ -383,8 +383,11 @@ class Redbat
                 }
                 else if (immutable d = isRootXYWithinBorder(frame, event.root_x, event.root_y))
                 {
-                    dragManager = DragManager(frame, true, event.root_x, event.root_y, event.root_x, event.root_y,
-                            frame.geometry, DragMode.border, d);
+                    if (event.detail == XCB_BUTTON_INDEX_1)
+                    {
+                        dragManager = DragManager(frame, true, event.root_x, event.root_y, event.root_x, event.root_y,
+                                frame.geometry, DragMode.border, d);
+                    }
                 }
                 else
                 {
