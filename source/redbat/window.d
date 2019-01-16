@@ -95,6 +95,22 @@ class Frame : Window
             immutable uint[] clientValues = [clientGeo.width + dw, clientGeo.height + dh];
             xcb_configure_window(connection, client.window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, clientValues.ptr);
         }
+        else
+        {
+            // dfmt off
+            xcb_configure_notify_event_t ev = {
+                response_type: XCB_CONFIGURE_NOTIFY,
+                event : client.window,
+                window: client.window,
+                x: cast(short)(newGeo.x + clientGeo.x), // ICCCM Version 2.0, §4.2.3
+                y: cast(short)(newGeo.y + titlebarAppearance.height + clientGeo.y), // ditto
+                width: clientGeo.width,
+                height: clientGeo.height,
+                border_width: clientGeo.borderWidth
+            };
+            // dfmt on
+            xcb_send_event(connection, 0, client.window, XCB_EVENT_MASK_STRUCTURE_NOTIFY, cast(char*)&ev);
+        }
         if (dw)
         {
             immutable uint titlebarValue = titlebar.geometry.width + dw;
