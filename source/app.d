@@ -374,6 +374,9 @@ class Redbat
                         dragManager = DragManager(frame, true, event.root_x, event.root_y, event.root_x, event.root_y,
                                 frame.geometry, DragMode.titlebar);
                         cursorManager.setStyle(CursorStyle.moving);
+                        xcb_grab_pointer(connection, 0, root.window,
+                                XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION,
+                                XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, cursorManager.rawCursor, event.time);
                     }
                     else if (event.detail == XCB_BUTTON_INDEX_2)
                     {
@@ -387,6 +390,9 @@ class Redbat
                     {
                         dragManager = DragManager(frame, true, event.root_x, event.root_y, event.root_x, event.root_y,
                                 frame.geometry, DragMode.border, d);
+                        xcb_grab_pointer(connection, 0, root.window,
+                                XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE | XCB_EVENT_MASK_BUTTON_1_MOTION,
+                                XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, XCB_NONE, cursorManager.rawCursor, event.time);
                     }
                 }
                 else
@@ -456,16 +462,15 @@ class Redbat
         // XXX: assume event.event to be root
         if (dragManager.inDrag && event.detail == XCB_BUTTON_INDEX_1)
         {
+            xcb_ungrab_pointer(connection, event.time);
             dragManager = DragManager();
             import std.algorithm.searching : find;
 
             auto r = frames[].find!"a.window==b"(event.child);
             if (!r.empty)
-
             {
                 setCursor(r.front, event.root_x, event.root_y);
             }
-
         }
     }
 

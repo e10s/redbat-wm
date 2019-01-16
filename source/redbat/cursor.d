@@ -24,6 +24,7 @@ class CursorManager
 
     private Window root;
     private xcb_cursor_t[CursorStyle] cursor;
+    private CursorStyle currentStyle;
 
     this(Window root)
     {
@@ -55,6 +56,12 @@ class CursorManager
     void setStyle(CursorStyle style)
     {
         xcb_change_window_attributes(root.connection, root.window, XCB_CW_CURSOR, &cursor[style]);
+        currentStyle = style;
+    }
+
+    @property xcb_cursor_t rawCursor()
+    {
+        return cursor[currentStyle];
     }
 }
 
