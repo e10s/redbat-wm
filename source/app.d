@@ -92,6 +92,7 @@ class Redbat
 
         infof("Successfully obtained root window of %#x", root.window);
 
+        updateActiveWindow(XCB_NONE);
         manageChildrenOfRoot();
 
         xcb_grab_button(connection, 0, root.window, XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
@@ -641,9 +642,11 @@ class Redbat
         if (r.empty)
         {
             warningf("Unmanaged frame %#x", event.event);
+            updateActiveWindow(XCB_NONE);
             return;
         }
         r.front.onFocused();
+        updateActiveWindow(r.front.client.window);
     }
 
     void onFocusOut(xcb_focus_out_event_t* event)
@@ -656,9 +659,12 @@ class Redbat
         if (r.empty)
         {
             warningf("Unmanaged frame %#x", event.event);
-            return;
         }
-        r.front.onUnforcused();
+        else
+        {
+            r.front.onUnforcused();
+        }
+        updateActiveWindow(XCB_NONE);
     }
 
     void onUnmapNotify(xcb_unmap_notify_event_t* event)
@@ -861,6 +867,14 @@ class Redbat
         immutable list = clientList;
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
                 "_NET_CLIENT_LIST"), XCB_ATOM_WINDOW, 32, cast(uint) list.length, list.ptr);
+    }
+
+    void updateActiveWindow(xcb_window_t window)
+    {
+        import redbat.atom;
+
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
+                "_NET_ACTIVE_WINDOW"), XCB_ATOM_WINDOW, 32, 1, &window);
     }
 }
 
