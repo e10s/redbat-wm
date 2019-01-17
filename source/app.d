@@ -700,6 +700,16 @@ class Redbat
         frame.createTitlebar();
         frame.reparentClient(client);
         frame.mapAll();
+
+        import redbat.atom;
+
+        immutable wmState = [1, XCB_NONE];
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, client, getAtomByName(connection, "WM_STATE"),
+                getAtomByName(connection, "WM_STATE"), 32, cast(uint) wmState.length, wmState.ptr);
+        immutable frameExtents = [frameBorderWidth, frameBorderWidth, titlebarAppearance.height + frameBorderWidth, frameBorderWidth];
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, client, getAtomByName(connection, "_NET_FRAME_EXTENTS"),
+                XCB_ATOM_CARDINAL, 32, cast(uint) frameExtents.length, frameExtents.ptr);
+
         frames.insert(frame);
         return frame.window;
     }
