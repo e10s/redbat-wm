@@ -62,6 +62,8 @@ class Frame : Window
     Window client; // child
     bool focused;
     TitlebarAppearance titlebarAppearance;
+    xcb_timestamp_t initialMappingTime;
+
     this(Window root, Geometry geo, TitlebarAppearance titlebarAppearance)
     {
         auto frame = xcb_generate_id(root.connection);
@@ -170,6 +172,10 @@ class Frame : Window
         this.map();
         titlebar.map();
         client.map();
+        if (!initialMappingTime)
+        {
+            initialMappingTime = XCB_CURRENT_TIME;
+        }
     }
 
     void focus(xcb_timestamp_t time = XCB_CURRENT_TIME)

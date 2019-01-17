@@ -679,6 +679,7 @@ class Redbat
         frame.destroy_();
         infof("destroy frame %#x", frame.window);
         frames.removeKey(frame);
+        updateClientList();
     }
 
     xcb_window_t applyFrame(xcb_window_t client, bool forExisting)
@@ -711,6 +712,7 @@ class Redbat
                 XCB_ATOM_CARDINAL, 32, cast(uint) frameExtents.length, frameExtents.ptr);
 
         frames.insert(frame);
+        updateClientList();
         return frame.window;
     }
 
@@ -838,6 +840,28 @@ class Redbat
         infof("%#x, %s", event.window, getAtomName(connection, event.atom));
     }
 
+    @property immutable(xcb_window_t[]) clientList()
+    {
+        import std.algorithm.sorting : sort;
+        import std.algorithm.iteration : map;
+
+        import std.array : array;
+
+        return frames[].array
+            .sort!("a.initialMappingTime<b.initialMappingTime")
+            .map!"a.client.window"
+            .array
+            .idup;
+    }
+
+    void updateClientList()
+    {
+        import redbat.atom;
+
+        immutable list = clientList;
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
+                "_NET_CLIENT_LIST"), XCB_ATOM_WINDOW, 32, cast(uint) list.length, list.ptr);
+    }
 }
 
 void main()
