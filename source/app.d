@@ -135,6 +135,10 @@ class Redbat
                 infof("XCB_MOTION_NOTIFY %s", eventType);
                 onMotionNotify(cast(xcb_motion_notify_event_t*) event);
                 break;
+            case XCB_ENTER_NOTIFY:
+                infof("XCB_ENTER_NOTIFY %s", eventType);
+                onEnterNotify(cast(xcb_enter_notify_event_t*) event);
+                break;
             case XCB_FOCUS_IN:
                 infof("XCB_FOCUS_IN %s", eventType);
                 onFocusIn(cast(xcb_focus_in_event_t*) event);
@@ -632,6 +636,17 @@ class Redbat
         setCursor(r.front, event.root_x, event.root_y);
     }
 
+    void onEnterNotify(xcb_enter_notify_event_t* event)
+    {
+        // XXX: assume event.event to be client
+        import std.algorithm.searching : canFind;
+
+        if (frames[].canFind!"a.client.window==b"(event.event))
+        {
+            cursorManager.setStyle(CursorStyle.normal); // cursor is likely to enter client via frame border, which changes cursor shape
+        }
+    }
+
     void onFocusIn(xcb_focus_in_event_t* event)
     {
         // XXX: assume event.event to be frame
@@ -700,7 +715,7 @@ class Redbat
             frameY -= titlebarHeight;
         }
 
-        immutable uint mask = XCB_EVENT_MASK_PROPERTY_CHANGE;
+        immutable uint mask = XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_PROPERTY_CHANGE;
         xcb_change_window_attributes(connection, client, XCB_CW_EVENT_MASK, &mask);
         auto frame = new Frame(root, Geometry(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
                 cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2), frameBorderWidth), titlebarAppearance);
