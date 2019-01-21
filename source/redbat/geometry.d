@@ -28,3 +28,23 @@ Geometry getGeometry(xcb_connection_t* connection, xcb_drawable_t drawable)
     }
     return geo;
 }
+
+short innerX(Geometry geo)
+{
+    return cast(short)(geo.x + geo.borderWidth);
+}
+
+short innerY(Geometry geo)
+{
+    return cast(short)(geo.y + geo.borderWidth);
+}
+
+ushort outerWidth(Geometry geo)
+{
+    return cast(ushort)(geo.width + geo.borderWidth * 2);
+}
+
+ushort outerHeight(Geometry geo)
+{
+    return cast(ushort)(geo.height + geo.borderWidth * 2);
+}

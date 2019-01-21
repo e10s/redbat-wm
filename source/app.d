@@ -717,8 +717,8 @@ class Redbat
 
         immutable uint mask = XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_PROPERTY_CHANGE;
         xcb_change_window_attributes(connection, client, XCB_CW_EVENT_MASK, &mask);
-        auto frame = new Frame(root, Geometry(frameX, frameY, cast(ushort)(geo.width + geo.borderWidth * 2),
-                cast(ushort)(titlebarHeight + geo.height + geo.borderWidth * 2), frameBorderWidth), titlebarAppearance);
+        auto frame = new Frame(root, Geometry(frameX, frameY, geo.outerWidth,
+                cast(ushort)(geo.outerHeight + titlebarHeight), frameBorderWidth), titlebarAppearance);
         frame.createTitlebar();
         frame.reparentClient(client);
         frame.mapAll();
