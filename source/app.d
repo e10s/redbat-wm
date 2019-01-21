@@ -703,22 +703,111 @@ class Redbat
         updateClientList();
     }
 
+    Geometry getNiceFrameGeometry(xcb_window_t client, Geometry clientGeo)
+    {
+        import xcb.icccm;
+
+        // dfmt off
+        Geometry frameGeo = {
+            width : clientGeo.outerWidth,
+            height : cast(ushort)(clientGeo.outerHeight + titlebarHeight),
+            borderWidth : frameBorderWidth
+        };
+        // dfmt on
+        xcb_size_hints_t hints;
+        xcb_icccm_get_wm_normal_hints_reply(connection, xcb_icccm_get_wm_normal_hints(connection, client), &hints, null);
+
+        switch (hints.win_gravity)
+        {
+        case XCB_GRAVITY_NORTH_WEST:
+            frameGeo.x = clientGeo.x;
+            frameGeo.y = clientGeo.y;
+            break;
+        case XCB_GRAVITY_NORTH:
+            frameGeo.x = cast(short)(clientGeo.x + clientGeo.outerWidth / 2 - frameGeo.outerWidth / 2);
+            assert(frameGeo.x + frameGeo.outerWidth / 2 == clientGeo.x + clientGeo.outerWidth / 2);
+            frameGeo.y = clientGeo.y;
+            break;
+        case XCB_GRAVITY_NORTH_EAST:
+            frameGeo.x = cast(short)(clientGeo.x - frameBorderWidth * 2);
+            assert(frameGeo.x + frameGeo.borderWidth + clientGeo.outerWidth + frameGeo.borderWidth - 1 == clientGeo.x
+                    + clientGeo.outerWidth - 1);
+            frameGeo.y = clientGeo.y;
+            break;
+        case XCB_GRAVITY_WEST:
+            frameGeo.x = clientGeo.x;
+            frameGeo.y = cast(short)(clientGeo.y + clientGeo.outerHeight / 2 - frameGeo.outerHeight / 2);
+            assert(frameGeo.y + frameGeo.outerHeight / 2 == clientGeo.y + clientGeo.outerHeight / 2);
+            break;
+        case XCB_GRAVITY_CENTER:
+            frameGeo.x = cast(short)(clientGeo.x + clientGeo.outerWidth / 2 - frameGeo.outerWidth / 2);
+            assert(frameGeo.x + frameGeo.outerWidth / 2 == clientGeo.x + clientGeo.outerWidth / 2);
+            frameGeo.y = cast(short)(clientGeo.y + clientGeo.outerHeight / 2 - frameGeo.outerHeight / 2);
+            assert(frameGeo.y + frameGeo.outerHeight / 2 == clientGeo.y + clientGeo.outerHeight / 2);
+            break;
+        case XCB_GRAVITY_EAST:
+            frameGeo.x = cast(short)(clientGeo.x - frameBorderWidth * 2);
+            assert(frameGeo.x + frameGeo.borderWidth + clientGeo.outerWidth + frameGeo.borderWidth - 1 == clientGeo.x
+                    + clientGeo.outerWidth - 1);
+            frameGeo.y = cast(short)(clientGeo.y + clientGeo.outerHeight / 2 - frameGeo.outerHeight / 2);
+            assert(frameGeo.y + frameGeo.outerHeight / 2 == clientGeo.y + clientGeo.outerHeight / 2);
+            break;
+        case XCB_GRAVITY_SOUTH_WEST:
+            frameGeo.x = clientGeo.x;
+            frameGeo.y = cast(short)(clientGeo.y + clientGeo.outerHeight - frameGeo.outerHeight);
+            assert(frameGeo.y + frameGeo.outerHeight - 1 == clientGeo.y + clientGeo.outerHeight - 1);
+            break;
+        case XCB_GRAVITY_SOUTH:
+            frameGeo.x = cast(short)(clientGeo.x + clientGeo.outerWidth / 2 - frameGeo.outerWidth / 2);
+            assert(frameGeo.x + frameGeo.outerWidth / 2 == clientGeo.x + clientGeo.outerWidth / 2);
+            frameGeo.y = cast(short)(clientGeo.y + clientGeo.outerHeight - frameGeo.outerHeight);
+            assert(frameGeo.y + frameGeo.outerHeight - 1 == clientGeo.y + clientGeo.outerHeight - 1);
+            break;
+        case XCB_GRAVITY_SOUTH_EAST:
+            frameGeo.x = cast(short)(clientGeo.x - frameBorderWidth * 2);
+            assert(frameGeo.x + frameGeo.borderWidth + clientGeo.outerWidth + frameGeo.borderWidth - 1 == clientGeo.x
+                    + clientGeo.outerWidth - 1);
+            frameGeo.y = cast(short)(clientGeo.y + clientGeo.outerHeight - frameGeo.outerHeight);
+            assert(frameGeo.y + frameGeo.outerHeight - 1 == clientGeo.y + clientGeo.outerHeight - 1);
+            break;
+        case XCB_GRAVITY_STATIC:
+            frameGeo.x = cast(short)(clientGeo.x - frameGeo.borderWidth);
+            assert(frameGeo.x + frameGeo.borderWidth == clientGeo.x);
+            frameGeo.y = cast(short)(clientGeo.y - (frameGeo.borderWidth + titlebarHeight));
+            assert(frameGeo.y + frameGeo.borderWidth + titlebarAppearance.height == clientGeo.y);
+            break;
+        default:
+            goto case XCB_GRAVITY_NORTH_WEST;
+        }
+
+        return frameGeo;
+    }
+
     xcb_window_t applyFrame(xcb_window_t client, bool forExisting)
     {
-        immutable geo = getGeometry(connection, client);
-        short frameX = geo.x;
-        short frameY = geo.y;
+        immutable clientGeo = getGeometry(connection, client);
+        Geometry frameGeo;
+
         if (forExisting)
         {
-            frameX -= frameBorderWidth;
-            frameY -= frameBorderWidth;
-            frameY -= titlebarHeight;
+            // same as the case of XCB_GRAVITY_STATIC
+            frameGeo.width = clientGeo.outerWidth;
+            frameGeo.height = cast(ushort)(clientGeo.outerHeight + titlebarHeight);
+            frameGeo.borderWidth = frameBorderWidth;
+
+            frameGeo.x = cast(short)(clientGeo.x - frameGeo.borderWidth);
+            assert(frameGeo.x + frameGeo.borderWidth == clientGeo.x);
+            frameGeo.y = cast(short)(clientGeo.y - (frameGeo.borderWidth + titlebarHeight));
+            assert(frameGeo.y + frameGeo.borderWidth + titlebarAppearance.height == clientGeo.y);
+        }
+        else
+        {
+            frameGeo = getNiceFrameGeometry(client, clientGeo);
         }
 
         immutable uint mask = XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_PROPERTY_CHANGE;
         xcb_change_window_attributes(connection, client, XCB_CW_EVENT_MASK, &mask);
-        auto frame = new Frame(root, Geometry(frameX, frameY, geo.outerWidth,
-                cast(ushort)(geo.outerHeight + titlebarHeight), frameBorderWidth), titlebarAppearance);
+        auto frame = new Frame(root, frameGeo, titlebarAppearance);
         frame.createTitlebar();
         frame.reparentClient(client);
         frame.mapAll();
