@@ -925,6 +925,7 @@ class Redbat
             {
                 miscValueMask |= XCB_CONFIG_WINDOW_BORDER_WIDTH;
                 miscValues ~= event.border_width;
+                newClientGeoByRoot.borderWidth = event.border_width;
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_SIBLING)
             {

@@ -92,10 +92,28 @@ class Frame : Window
         immutable dw = cast(int) newGeo.width - oldGeo.width;
         immutable dh = cast(int) newGeo.height - oldGeo.height;
 
+        // If called via configure req, client's border width might have been changed in advance.
+        // However, there's no way to notice it, therefore, we have to recalculate new size that client requires referring to other aspects.
         if (dw || dh)
         {
-            immutable uint[] clientValues = [clientGeo.width + dw, clientGeo.height + dh];
-            xcb_configure_window(connection, client.window, XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, clientValues.ptr);
+            immutable newClientWidth = newGeo.width - clientGeo.borderWidth * 2;
+            immutable newClientHeight = newGeo.height - titlebar.geometry.height - clientGeo.borderWidth * 2;
+            uint[] clientValues;
+            ushort mask;
+            if (clientGeo.width != newClientWidth)
+            {
+                mask |= XCB_CONFIG_WINDOW_WIDTH;
+                clientValues ~= newClientWidth;
+            }
+            if (clientGeo.height != newClientHeight)
+            {
+                mask |= XCB_CONFIG_WINDOW_HEIGHT;
+                clientValues ~= newClientHeight;
+            }
+            if (mask)
+            {
+                xcb_configure_window(connection, client.window, mask, clientValues.ptr);
+            }
         }
         else
         {
