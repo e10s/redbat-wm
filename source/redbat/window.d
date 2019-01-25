@@ -198,7 +198,25 @@ class Frame : Window
 
     void focus(xcb_timestamp_t time = XCB_CURRENT_TIME)
     {
-        xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, client.window, time);
+        void setInputFocus()
+        {
+            xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, client.window, time);
+        }
+
+        bool acceptsInput = () {
+            xcb_icccm_wm_hints_t hints;
+            if (xcb_icccm_get_wm_hints_reply(connection, xcb_icccm_get_wm_hints(connection, client.window), &hints, null))
+            {
+                return cast(bool) hints.input;
+            }
+
+            return true; // XXX: Try to give focus forcibly
+        }();
+
+        if (acceptsInput)
+        {
+            setInputFocus();
+        }
     }
 
     void onFocused()
