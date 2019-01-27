@@ -197,6 +197,10 @@ class Frame : Window
         {
             initialMappingTime = Clock.currTime();
         }
+        if (lastRaisedTime == lastRaisedTime.init)
+        {
+            lastRaisedTime = Clock.currTime();
+        }
     }
 
     void focus(xcb_timestamp_t time = XCB_CURRENT_TIME)

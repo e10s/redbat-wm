@@ -842,6 +842,7 @@ class Redbat
                 XCB_ATOM_CARDINAL, 32, cast(uint) frameExtents.length, frameExtents.ptr);
 
         frames.insert(frame);
+
         updateClientList();
         updateClientListStacking();
         return frame.window;
