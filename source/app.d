@@ -266,6 +266,7 @@ class Redbat
             immutable uint v = XCB_STACK_MODE_ABOVE;
             xcb_configure_window(connection, frame.window, XCB_CONFIG_WINDOW_STACK_MODE, &v);
             frame.lastRaisedTime = time;
+            updateClientListStacking();
         }
         else
         {
@@ -720,6 +721,7 @@ class Redbat
         infof("destroy frame %#x", frame.window);
         frames.removeKey(frame);
         updateClientList();
+        updateClientListStacking();
     }
 
     Geometry getNiceFrameGeometry(xcb_window_t client, Geometry clientGeoRequested /*by root*/ , Geometry geoForRefPoint /*by root*/ )
@@ -839,6 +841,7 @@ class Redbat
 
         frames.insert(frame);
         updateClientList();
+        updateClientListStacking();
         return frame.window;
     }
 
@@ -994,6 +997,29 @@ class Redbat
         immutable list = clientList;
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
                 "_NET_CLIENT_LIST"), XCB_ATOM_WINDOW, 32, cast(uint) list.length, list.ptr);
+    }
+
+    @property immutable(xcb_window_t[]) clientListStacking()
+    {
+        import std.algorithm.sorting : sort;
+        import std.algorithm.iteration : map;
+
+        import std.array : array;
+
+        return frames[].array
+            .sort!("a.lastRaisedTime<b.lastRaisedTime")
+            .map!"a.client.window"
+            .array
+            .idup;
+    }
+
+    void updateClientListStacking()
+    {
+        import redbat.atom;
+
+        immutable list = clientListStacking;
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
+                "_NET_CLIENT_LIST_STACKING"), XCB_ATOM_WINDOW, 32, cast(uint) list.length, list.ptr);
     }
 
     void updateActiveWindow(xcb_window_t window)
