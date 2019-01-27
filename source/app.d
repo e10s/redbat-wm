@@ -255,7 +255,7 @@ class Redbat
         }
     }
 
-    void raiseWindow(Frame frame, xcb_timestamp_t time = XCB_CURRENT_TIME)
+    void raiseWindow(Frame frame)
     {
         import std.algorithm.searching : find;
 
@@ -265,7 +265,9 @@ class Redbat
             infof("Raise: %#x", frame.window);
             immutable uint v = XCB_STACK_MODE_ABOVE;
             xcb_configure_window(connection, frame.window, XCB_CONFIG_WINDOW_STACK_MODE, &v);
-            frame.lastRaisedTime = time;
+            import std.datetime.systime;
+
+            frame.lastRaisedTime = Clock.currTime();
             updateClientListStacking();
         }
         else
@@ -428,7 +430,7 @@ class Redbat
                 {
                     focusWindow(frame, event.time);
                 }
-                raiseWindow(frame, event.time);
+                raiseWindow(frame);
             }
             else
             {

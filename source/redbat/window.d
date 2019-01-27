@@ -62,8 +62,10 @@ class Frame : Window
     Window client; // child
     bool focused;
     TitlebarAppearance titlebarAppearance;
-    xcb_timestamp_t initialMappingTime;
-    xcb_timestamp_t lastRaisedTime;
+    import std.datetime.systime;
+
+    SysTime initialMappingTime;
+    SysTime lastRaisedTime;
 
     this(Window root, Geometry geo, TitlebarAppearance titlebarAppearance)
     {
@@ -191,9 +193,9 @@ class Frame : Window
         this.map();
         titlebar.map();
         client.map();
-        if (!initialMappingTime)
+        if (initialMappingTime == initialMappingTime.init)
         {
-            initialMappingTime = XCB_CURRENT_TIME;
+            initialMappingTime = Clock.currTime();
         }
     }
 
