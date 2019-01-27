@@ -63,6 +63,7 @@ class Frame : Window
     bool focused;
     TitlebarAppearance titlebarAppearance;
     xcb_timestamp_t initialMappingTime;
+    xcb_timestamp_t lastRaisedTime;
 
     this(Window root, Geometry geo, TitlebarAppearance titlebarAppearance)
     {
@@ -222,8 +223,6 @@ class Frame : Window
     void onFocused()
     {
         focused = true;
-        immutable uint v = XCB_STACK_MODE_ABOVE;
-        xcb_configure_window(connection, window, XCB_CONFIG_WINDOW_STACK_MODE, &v);
         draw();
     }
 

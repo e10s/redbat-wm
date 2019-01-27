@@ -255,6 +255,24 @@ class Redbat
         }
     }
 
+    void raiseWindow(Frame frame, xcb_timestamp_t time = XCB_CURRENT_TIME)
+    {
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find(frame);
+        if (!r.empty)
+        {
+            infof("Raise: %#x", frame.window);
+            immutable uint v = XCB_STACK_MODE_ABOVE;
+            xcb_configure_window(connection, frame.window, XCB_CONFIG_WINDOW_STACK_MODE, &v);
+            frame.lastRaisedTime = time;
+        }
+        else
+        {
+            errorf("An unmanaged frame: %#x", frame.window);
+        }
+    }
+
     bool isRootXYWithinTitlebar(Frame frame, short rootX, short rootY)
     {
         auto reply = xcb_translate_coordinates_reply(connection, xcb_translate_coordinates(connection, root.window,
@@ -409,6 +427,7 @@ class Redbat
                 {
                     focusWindow(frame, event.time);
                 }
+                raiseWindow(frame, event.time);
             }
             else
             {
