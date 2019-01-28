@@ -92,6 +92,7 @@ class Redbat
 
         infof("Successfully obtained root window of %#x", root.window);
 
+        updateNumberOfDesktops();
         updateActiveWindow(XCB_NONE);
         manageChildrenOfRoot();
 
@@ -1023,6 +1024,15 @@ class Redbat
         immutable list = clientListStacking;
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
                 "_NET_CLIENT_LIST_STACKING"), XCB_ATOM_WINDOW, 32, cast(uint) list.length, list.ptr);
+    }
+
+    void updateNumberOfDesktops()
+    {
+        import redbat.atom;
+
+        immutable n = 1;
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
+                "_NET_NUMBER_OF_DESKTOPS"), XCB_ATOM_CARDINAL, 32, 1, &n);
     }
 
     void updateActiveWindow(xcb_window_t window)
