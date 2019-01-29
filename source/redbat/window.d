@@ -210,6 +210,25 @@ class Frame : Window
             xcb_set_input_focus(connection, XCB_INPUT_FOCUS_POINTER_ROOT, client.window, time);
         }
 
+        auto atomProto = getAtomByName(connection, "WM_PROTOCOLS");
+        auto atomTakeFocus = getAtomByName(connection, "WM_TAKE_FOCUS");
+        void sendTakeFocus()
+        {
+            // dfmt off
+            xcb_client_message_data_t clientMessageData = {
+                data32: [atomTakeFocus, time, 0, 0, 0]
+            };
+            xcb_client_message_event_t clientMessageEvent = {
+                response_type: XCB_CLIENT_MESSAGE,
+                format : 32,
+                window: client.window,
+                type: atomProto,
+                data: clientMessageData
+            };
+            // dfmt on
+            xcb_send_event(connection, 0, client.window, XCB_EVENT_MASK_NO_EVENT, cast(char*)&clientMessageEvent);
+        }
+
         bool acceptsInput = () {
             xcb_icccm_wm_hints_t hints;
             if (xcb_icccm_get_wm_hints_reply(connection, xcb_icccm_get_wm_hints(connection, client.window), &hints, null))
@@ -220,9 +239,31 @@ class Frame : Window
             return true; // XXX: Try to give focus forcibly
         }();
 
+        bool supportsTakeFocus = () {
+
+            xcb_icccm_get_wm_protocols_reply_t protocols;
+            if (!xcb_icccm_get_wm_protocols_reply(connection, xcb_icccm_get_wm_protocols(connection, client.window,
+                    atomProto), &protocols, null))
+            {
+                return false;
+            }
+            import std.algorithm.searching : canFind;
+
+            if (!protocols.atoms[0 .. protocols.atoms_len].canFind(atomTakeFocus))
+            {
+                return false;
+            }
+            return true;
+        }();
+
         if (acceptsInput)
         {
             setInputFocus();
+        }
+
+        if (supportsTakeFocus)
+        {
+            sendTakeFocus();
         }
     }
 
