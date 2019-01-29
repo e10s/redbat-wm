@@ -428,11 +428,14 @@ class Redbat
                     cursorManager.setStyle(CursorStyle.normal);
                 }
 
-                if (!frame.focused)
+                if (event.detail == XCB_BUTTON_INDEX_1 || event.detail == XCB_BUTTON_INDEX_2 || event.detail == XCB_BUTTON_INDEX_3)
                 {
-                    focusWindow(frame, event.time);
+                    if (!frame.focused)
+                    {
+                        focusWindow(frame, event.time);
+                    }
+                    raiseWindow(frame);
                 }
-                raiseWindow(frame);
             }
             else
             {
