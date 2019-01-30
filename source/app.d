@@ -11,6 +11,10 @@ class Redbat
     xcb_connection_t* connection;
     xcb_screen_t* screen;
     Window root;
+    Window winForWMCheck;
+    immutable int pid;
+    immutable string hostName;
+    immutable wmName = "redbat-wm";
     import std.container.rbtree;
 
     RedBlackTree!(Frame, "a.window<b.window") frames;
@@ -73,6 +77,16 @@ class Redbat
         titlebarAppearance = TitlebarAppearance(cf.createGCWithFG("LightPink"), cf.createGCWithFG("DeepPink"),
                 cf.getPixByColorName("LightSkyBlue"), cf.getPixByColorName("DodgerBlue"), titlebarHeight, titlebarMinWidth);
         cursorManager = new CursorManager(root);
+
+        import std.process : thisProcessID;
+
+        pid = thisProcessID;
+        import core.sys.posix.unistd : gethostname;
+        import core.stdc.string : strlen;
+
+        char[256] s = '\0';
+        gethostname(s.ptr, s.length);
+        hostName = s[0 .. strlen(s.ptr)].idup;
     }
 
     ~this()
@@ -81,6 +95,31 @@ class Redbat
         xcb_free_gc(connection, titlebarAppearance.focusedGC);
 
         xcb_disconnect(connection);
+    }
+
+    auto prepareFor_NET_SUPPORTING_WM_CHECK()
+    {
+        import redbat.atom;
+
+        winForWMCheck = new Window(root, xcb_generate_id(connection));
+        xcb_create_window(connection, XCB_COPY_FROM_PARENT, winForWMCheck.window, root.window, -1, -1, 1, 1, 0,
+                XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, 0, null);
+
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, getAtomByName(connection,
+                "_NET_WM_PID"), XCB_ATOM_CARDINAL, 32, 1, &pid);
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, XCB_ATOM_WM_CLIENT_MACHINE,
+                XCB_ATOM_STRING, 8, cast(uint) hostName.length, hostName.ptr);
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING,
+                8, cast(uint) wmName.length, wmName.ptr);
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, getAtomByName(connection,
+                "_NET_WM_NAME"), getAtomByName(connection, "UTF8_STRING"), 8, cast(uint) wmName.length, wmName.ptr);
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
+                "_NET_SUPPORTING_WM_CHECK"), XCB_ATOM_WINDOW, 32, 1, &winForWMCheck.window);
+        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, getAtomByName(connection,
+                "_NET_SUPPORTING_WM_CHECK"), XCB_ATOM_WINDOW, 32, 1, &winForWMCheck.window);
+
+        // TODO: Set more required props!!!!
+        // XXX: Needed to be mapped?
     }
 
     void run()
@@ -92,6 +131,7 @@ class Redbat
 
         infof("Successfully obtained root window of %#x", root.window);
 
+        prepareFor_NET_SUPPORTING_WM_CHECK();
         updateNumberOfDesktops();
         updateCurrentDesktop();
         updateActiveWindow(XCB_NONE);
