@@ -5,11 +5,13 @@ import redbat.window;
 import std.exception : enforce;
 import std.experimental.logger;
 import xcb.xcb;
+import xcb.ewmh;
 
 class Redbat
 {
     xcb_connection_t* connection;
     xcb_screen_t* screen;
+    xcb_ewmh_connection_t ewmh;
     Window root;
     Window winForWMCheck;
     immutable int pid;
@@ -87,6 +89,8 @@ class Redbat
         char[256] s = '\0';
         gethostname(s.ptr, s.length);
         hostName = s[0 .. strlen(s.ptr)].idup;
+
+        xcb_ewmh_init_atoms_replies(&ewmh, xcb_ewmh_init_atoms(connection, &ewmh), null);
     }
 
     ~this()
@@ -99,23 +103,18 @@ class Redbat
 
     void prepareFor_NET_SUPPORTING_WM_CHECK()
     {
-        import redbat.atom;
         import xcb.icccm;
 
         winForWMCheck = new Window(root, xcb_generate_id(connection));
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, winForWMCheck.window, root.window, -1, -1, 1, 1, 0,
                 XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, 0, null);
 
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, getAtomByName(connection,
-                "_NET_WM_PID"), XCB_ATOM_CARDINAL, 32, 1, &pid);
+        xcb_ewmh_set_wm_pid(&ewmh, winForWMCheck.window, pid);
         xcb_icccm_set_wm_client_machine(connection, winForWMCheck.window, XCB_ATOM_STRING, 8, cast(uint) hostName.length, hostName.ptr);
         xcb_icccm_set_wm_name(connection, winForWMCheck.window, XCB_ATOM_STRING, 8, cast(uint) wmName.length, wmName.ptr);
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, getAtomByName(connection,
-                "_NET_WM_NAME"), getAtomByName(connection, "UTF8_STRING"), 8, cast(uint) wmName.length, wmName.ptr);
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
-                "_NET_SUPPORTING_WM_CHECK"), XCB_ATOM_WINDOW, 32, 1, &winForWMCheck.window);
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, getAtomByName(connection,
-                "_NET_SUPPORTING_WM_CHECK"), XCB_ATOM_WINDOW, 32, 1, &winForWMCheck.window);
+        xcb_ewmh_set_wm_name(&ewmh, winForWMCheck.window, cast(uint) wmName.length, wmName.ptr);
+        xcb_ewmh_set_supporting_wm_check(&ewmh, root.window, winForWMCheck.window);
+        xcb_ewmh_set_supporting_wm_check(&ewmh, winForWMCheck.window, winForWMCheck.window);
 
         // TODO: Set more required props!!!!
         // XXX: Needed to be mapped?
@@ -881,10 +880,8 @@ class Redbat
         immutable wmState = [1, XCB_NONE];
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, client, getAtomByName(connection, "WM_STATE"),
                 getAtomByName(connection, "WM_STATE"), 32, cast(uint) wmState.length, wmState.ptr);
-        immutable frameExtents = [frameBorderWidth, frameBorderWidth, titlebarAppearance.height + frameBorderWidth, frameBorderWidth];
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, client, getAtomByName(connection, "_NET_FRAME_EXTENTS"),
-                XCB_ATOM_CARDINAL, 32, cast(uint) frameExtents.length, frameExtents.ptr);
-
+        xcb_ewmh_set_frame_extents(&ewmh, client, frameBorderWidth, frameBorderWidth,
+                titlebarAppearance.height + frameBorderWidth, frameBorderWidth);
         frames.insert(frame);
 
         updateClientList();
@@ -1039,11 +1036,8 @@ class Redbat
 
     void updateClientList()
     {
-        import redbat.atom;
-
         immutable list = clientList;
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
-                "_NET_CLIENT_LIST"), XCB_ATOM_WINDOW, 32, cast(uint) list.length, list.ptr);
+        xcb_ewmh_set_client_list(&ewmh, 0, cast(uint) list.length, cast(xcb_window_t*) list.ptr); // XXX: screen_nbr
     }
 
     @property immutable(xcb_window_t[]) clientListStacking()
@@ -1062,37 +1056,23 @@ class Redbat
 
     void updateClientListStacking()
     {
-        import redbat.atom;
-
         immutable list = clientListStacking;
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
-                "_NET_CLIENT_LIST_STACKING"), XCB_ATOM_WINDOW, 32, cast(uint) list.length, list.ptr);
+        xcb_ewmh_set_client_list_stacking(&ewmh, 0, cast(uint) list.length, cast(xcb_window_t*) list.ptr); // XXX: screen_nbr
     }
 
     void updateNumberOfDesktops()
     {
-        import redbat.atom;
-
-        immutable n = 1;
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
-                "_NET_NUMBER_OF_DESKTOPS"), XCB_ATOM_CARDINAL, 32, 1, &n);
+        xcb_ewmh_set_number_of_desktops(&ewmh, 0, 1); // XXX: screen_nbr
     }
 
     void updateCurrentDesktop()
     {
-        import redbat.atom;
-
-        immutable k = 0;
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
-                "_NET_CURRENT_DESKTOP"), XCB_ATOM_CARDINAL, 32, 1, &k);
+        xcb_ewmh_set_current_desktop(&ewmh, 0, 0); // XXX: screen_nbr
     }
 
     void updateActiveWindow(xcb_window_t window)
     {
-        import redbat.atom;
-
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
-                "_NET_ACTIVE_WINDOW"), XCB_ATOM_WINDOW, 32, 1, &window);
+        xcb_ewmh_set_active_window(&ewmh, 0, window); // XXX: screen_nbr
     }
 }
 
