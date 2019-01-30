@@ -97,9 +97,10 @@ class Redbat
         xcb_disconnect(connection);
     }
 
-    auto prepareFor_NET_SUPPORTING_WM_CHECK()
+    void prepareFor_NET_SUPPORTING_WM_CHECK()
     {
         import redbat.atom;
+        import xcb.icccm;
 
         winForWMCheck = new Window(root, xcb_generate_id(connection));
         xcb_create_window(connection, XCB_COPY_FROM_PARENT, winForWMCheck.window, root.window, -1, -1, 1, 1, 0,
@@ -107,10 +108,8 @@ class Redbat
 
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, getAtomByName(connection,
                 "_NET_WM_PID"), XCB_ATOM_CARDINAL, 32, 1, &pid);
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, XCB_ATOM_WM_CLIENT_MACHINE,
-                XCB_ATOM_STRING, 8, cast(uint) hostName.length, hostName.ptr);
-        xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, XCB_ATOM_WM_NAME, XCB_ATOM_STRING,
-                8, cast(uint) wmName.length, wmName.ptr);
+        xcb_icccm_set_wm_client_machine(connection, winForWMCheck.window, XCB_ATOM_STRING, 8, cast(uint) hostName.length, hostName.ptr);
+        xcb_icccm_set_wm_name(connection, winForWMCheck.window, XCB_ATOM_STRING, 8, cast(uint) wmName.length, wmName.ptr);
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, winForWMCheck.window, getAtomByName(connection,
                 "_NET_WM_NAME"), getAtomByName(connection, "UTF8_STRING"), 8, cast(uint) wmName.length, wmName.ptr);
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, root.window, getAtomByName(connection,
