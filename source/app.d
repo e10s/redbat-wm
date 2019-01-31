@@ -20,6 +20,7 @@ class Redbat
     import std.container.rbtree;
 
     RedBlackTree!(Frame, "a.window<b.window") frames;
+    RedBlackTree!(Window, "a.window<b.window") docks;
     TitlebarAppearance titlebarAppearance;
     immutable ushort frameBorderWidth = 3;
     immutable ushort titlebarHeight = 30;
@@ -73,6 +74,7 @@ class Redbat
 
         root = new Window(connection, screen, screen.root);
         frames = new typeof(frames);
+        docks = new typeof(docks);
         import redbat.cosmetic;
 
         auto cf = new CosmeticFactory(root);
@@ -217,6 +219,13 @@ class Redbat
         }
     }
 
+    xcb_atom_t[] getWindowTypes(xcb_window_t window)
+    {
+        xcb_ewmh_get_atoms_reply_t types;
+        xcb_ewmh_get_wm_window_type_reply(&ewmh, xcb_ewmh_get_wm_window_type(&ewmh, window), &types, null);
+        return types.atoms[0 .. types.atoms_len].dup;
+    }
+
     void manageChildrenOfRoot()
     {
         auto reply = xcb_query_tree_reply(connection, xcb_query_tree(connection, root.window), null);
@@ -242,6 +251,14 @@ class Redbat
             }
             if (attr.map_state != XCB_MAP_STATE_VIEWABLE || attr.override_redirect)
             {
+                continue;
+            }
+
+            import std.algorithm.searching : canFind;
+
+            if (getWindowTypes(child).canFind(ewmh._NET_WM_WINDOW_TYPE_DOCK))
+            {
+                docks.insert(new Window(root, child));
                 continue;
             }
 
@@ -896,12 +913,25 @@ class Redbat
         {
             return;
         }
+        scope (exit)
+        {
+            free(reply);
+        }
 
         if (!reply.override_redirect)
         {
+            import std.algorithm.searching : canFind;
+
+            if (getWindowTypes(event.window).canFind(ewmh._NET_WM_WINDOW_TYPE_DOCK))
+            {
+                auto dock = new Window(root, event.window);
+                dock.map();
+                docks.insert(dock);
+
+                return;
+            }
             applyFrame(event.window, false);
         }
-        free(reply);
     }
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
