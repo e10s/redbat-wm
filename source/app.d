@@ -134,6 +134,7 @@ class Redbat
         prepareFor_NET_SUPPORTING_WM_CHECK();
         updateNumberOfDesktops();
         updateDesktopGeometry();
+        updateDesktopViewport();
         updateCurrentDesktop();
         updateActiveWindow(XCB_NONE);
         manageChildrenOfRoot();
@@ -1099,6 +1100,12 @@ class Redbat
     void updateDesktopGeometry()
     {
         xcb_ewmh_set_desktop_geometry(&ewmh, 0, screen.width_in_pixels, screen.height_in_pixels); // XXX: screen_nbr
+    }
+
+    void updateDesktopViewport()
+    {
+        auto coord = xcb_ewmh_coordinates_t(0, 0);
+        xcb_ewmh_set_desktop_viewport(&ewmh, 0, 1, &coord); // XXX: screen_nbr
     }
 
     void updateCurrentDesktop()
