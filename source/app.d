@@ -136,6 +136,7 @@ class Redbat
         updateDesktopGeometry();
         updateDesktopViewport();
         updateCurrentDesktop();
+        updateDesktopNames();
         updateActiveWindow(XCB_NONE);
         manageChildrenOfRoot();
 
@@ -1111,6 +1112,12 @@ class Redbat
     void updateCurrentDesktop()
     {
         xcb_ewmh_set_current_desktop(&ewmh, 0, 0); // XXX: screen_nbr
+    }
+
+    void updateDesktopNames()
+    {
+        immutable name = "デベハトップ" ~ "\0";
+        xcb_ewmh_set_desktop_names(&ewmh, 0, cast(uint) name.length, name.ptr); // XXX: screen_nbr
     }
 
     void updateActiveWindow(xcb_window_t window)
