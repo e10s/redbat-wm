@@ -1036,8 +1036,10 @@ class Redbat
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
             {
-                miscValueMask |= XCB_CONFIG_WINDOW_STACK_MODE;
-                miscValues ~= event.stack_mode;
+                if (event.stack_mode == XCB_STACK_MODE_ABOVE)
+                {
+                    raiseWindow(frame);
+                }
             }
 
             if (miscValueMask)
