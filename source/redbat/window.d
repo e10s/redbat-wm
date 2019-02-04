@@ -61,6 +61,7 @@ class Frame : Window
     Titlebar titlebar; // child
     Window client; // child
     bool focused;
+    bool noDeco;
     TitlebarAppearance titlebarAppearance;
     import std.datetime.systime;
 
@@ -76,6 +77,13 @@ class Frame : Window
                 geo.borderWidth, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen.root_visual, XCB_CW_EVENT_MASK, &mask);
 
         this.titlebarAppearance = titlebarAppearance;
+    }
+
+    this(Window root, Geometry geo)
+    {
+        assert(geo.borderWidth == 0);
+        this(root, geo, TitlebarAppearance());
+        this.noDeco = true;
     }
 
     override @property Geometry geometry()
@@ -191,7 +199,10 @@ class Frame : Window
     void mapAll()
     {
         this.map();
-        titlebar.map();
+        if (!noDeco)
+        {
+            titlebar.map();
+        }
         client.map();
         if (initialMappingTime == initialMappingTime.init)
         {
@@ -323,6 +334,10 @@ class Frame : Window
 
     void draw()
     {
+        if (noDeco)
+        {
+            return;
+        }
         titlebar.draw(focused, titlebarAppearance);
     }
 }
@@ -362,6 +377,6 @@ struct TitlebarAppearance
     xcb_gcontext_t focusedGC;
     uint unfocusedBGColor;
     uint focusedBGColor;
-    ushort height = 30;
-    ushort minWidth = 120;
+    ushort height;
+    ushort minWidth = 1;
 }

@@ -20,7 +20,6 @@ class Redbat
     import std.container.rbtree;
 
     RedBlackTree!(Frame, "a.window<b.window") frames;
-    RedBlackTree!(Window, "a.window<b.window") docks;
     TitlebarAppearance titlebarAppearance;
     immutable ushort frameBorderWidth = 3;
     immutable ushort titlebarHeight = 30;
@@ -74,7 +73,6 @@ class Redbat
 
         root = new Window(connection, screen, screen.root);
         frames = new typeof(frames);
-        docks = new typeof(docks);
         import redbat.cosmetic;
 
         auto cf = new CosmeticFactory(root);
@@ -254,14 +252,6 @@ class Redbat
             }
             if (attr.map_state != XCB_MAP_STATE_VIEWABLE || attr.override_redirect)
             {
-                continue;
-            }
-
-            import std.algorithm.searching : canFind;
-
-            if (getWindowTypes(child).canFind(ewmh._NET_WM_WINDOW_TYPE_DOCK))
-            {
-                docks.insert(new Window(root, child));
                 continue;
             }
 
@@ -791,6 +781,19 @@ class Redbat
 
     Geometry getNiceFrameGeometry(xcb_window_t client, Geometry clientGeoRequested /*by root*/ , Geometry geoForRefPoint /*by root*/ )
     {
+        import std.algorithm.searching : canFind;
+
+        immutable noDeco = getWindowTypes(client).canFind(ewmh._NET_WM_WINDOW_TYPE_DOCK);
+        if (noDeco) // No decorations
+        {
+            Geometry frameGeo;
+            frameGeo.x = clientGeoRequested.x;
+            frameGeo.y = clientGeoRequested.y;
+            frameGeo.width = clientGeoRequested.outerWidth;
+            frameGeo.height = clientGeoRequested.outerHeight;
+            return frameGeo;
+        }
+
         import xcb.icccm;
 
         // dfmt off
@@ -868,10 +871,13 @@ class Redbat
 
     xcb_window_t applyFrame(xcb_window_t client, bool forExisting)
     {
+        import std.algorithm.searching : canFind;
+
+        auto isDock = getWindowTypes(client).canFind(ewmh._NET_WM_WINDOW_TYPE_DOCK);
+
         immutable clientGeo = getGeometry(connection, client);
         Geometry frameGeo;
-
-        if (forExisting)
+        if (forExisting && !isDock)
         {
             // same as the case of XCB_GRAVITY_STATIC
             frameGeo.width = clientGeo.outerWidth;
@@ -890,7 +896,7 @@ class Redbat
 
         immutable uint mask = XCB_EVENT_MASK_ENTER_WINDOW | XCB_EVENT_MASK_PROPERTY_CHANGE;
         xcb_change_window_attributes(connection, client, XCB_CW_EVENT_MASK, &mask);
-        auto frame = new Frame(root, frameGeo, titlebarAppearance);
+        auto frame = isDock ? new Frame(root, frameGeo) : new Frame(root, frameGeo, titlebarAppearance);
         frame.createTitlebar();
         frame.reparentClient(client);
         frame.mapAll();
@@ -900,8 +906,15 @@ class Redbat
         immutable wmState = [1, XCB_NONE];
         xcb_change_property(connection, XCB_PROP_MODE_REPLACE, client, getAtomByName(connection, "WM_STATE"),
                 getAtomByName(connection, "WM_STATE"), 32, cast(uint) wmState.length, wmState.ptr);
-        xcb_ewmh_set_frame_extents(&ewmh, client, frameBorderWidth, frameBorderWidth,
-                titlebarAppearance.height + frameBorderWidth, frameBorderWidth);
+        if (isDock)
+        {
+            xcb_ewmh_set_frame_extents(&ewmh, client, 0, 0, 0, 0);
+        }
+        else
+        {
+            xcb_ewmh_set_frame_extents(&ewmh, client, frameBorderWidth, frameBorderWidth,
+                    titlebarAppearance.height + frameBorderWidth, frameBorderWidth);
+        }
         frames.insert(frame);
 
         updateClientList();
@@ -923,16 +936,6 @@ class Redbat
 
         if (!reply.override_redirect)
         {
-            import std.algorithm.searching : canFind;
-
-            if (getWindowTypes(event.window).canFind(ewmh._NET_WM_WINDOW_TYPE_DOCK))
-            {
-                auto dock = new Window(root, event.window);
-                dock.map();
-                docks.insert(dock);
-
-                return;
-            }
             applyFrame(event.window, false);
         }
     }
