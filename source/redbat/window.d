@@ -67,6 +67,9 @@ class Frame : Window
 
     SysTime initialMappingTime;
     SysTime lastRaisedTime;
+    import xcb.ewmh : xcb_ewmh_get_extents_reply_t;
+
+    xcb_ewmh_get_extents_reply_t strut;
 
     this(Window root, Geometry geo, TitlebarAppearance titlebarAppearance)
     {

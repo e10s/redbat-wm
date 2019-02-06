@@ -869,6 +869,25 @@ class Redbat
         return frameGeo;
     }
 
+    xcb_ewmh_get_extents_reply_t getStrut(xcb_window_t client)
+    {
+        xcb_ewmh_wm_strut_partial_t tmp;
+        xcb_ewmh_get_extents_reply_t ret;
+        if (xcb_ewmh_get_wm_strut_partial_reply(&ewmh, xcb_ewmh_get_wm_strut_partial(&ewmh, client), &tmp, null))
+        {
+            ret.left = tmp.left;
+            ret.right = tmp.right;
+            ret.top = tmp.top;
+            ret.bottom = tmp.bottom;
+        }
+        else
+        {
+            xcb_ewmh_get_wm_strut_reply(&ewmh, xcb_ewmh_get_wm_strut(&ewmh, client), &ret, null);
+        }
+
+        return ret;
+    }
+
     xcb_window_t applyFrame(xcb_window_t client, bool forExisting)
     {
         import std.algorithm.searching : canFind;
@@ -916,6 +935,7 @@ class Redbat
                     titlebarAppearance.height + frameBorderWidth, frameBorderWidth);
         }
         frames.insert(frame);
+        frame.strut = getStrut(client);
 
         updateClientList();
         updateClientListStacking();
@@ -1053,9 +1073,28 @@ class Redbat
 
     void onPropertyNotify(xcb_property_notify_event_t* event)
     {
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find!"a.client.window==b"(event.window);
+        if (r.empty)
+        {
+            return;
+        }
+        auto frame = r.front;
         import redbat.atom;
 
         infof("%#x, %s", event.window, getAtomName(connection, event.atom));
+        if (event.atom == ewmh._NET_WM_STRUT_PARTIAL)
+        {
+            if (event.state == XCB_PROPERTY_NEW_VALUE)
+            {
+                frame.strut = getStrut(event.window);
+            }
+            else if (event.state == XCB_PROPERTY_DELETE)
+            {
+                frame.strut = frame.strut.init;
+            }
+        }
     }
 
     @property immutable(xcb_window_t[]) clientList()
