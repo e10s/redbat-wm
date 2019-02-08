@@ -136,6 +136,7 @@ class Redbat
         updateCurrentDesktop();
         updateDesktopNames();
         updateActiveWindow(XCB_NONE);
+        updateWorkarea();
         manageChildrenOfRoot();
 
         xcb_grab_button(connection, 0, root.window, XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE,
@@ -936,6 +937,7 @@ class Redbat
         }
         frames.insert(frame);
         frame.strut = getStrut(client);
+        updateWorkarea();
 
         updateClientList();
         updateClientListStacking();
@@ -1094,6 +1096,7 @@ class Redbat
             {
                 frame.strut = frame.strut.init;
             }
+            updateWorkarea();
         }
     }
 
@@ -1167,6 +1170,33 @@ class Redbat
     void updateActiveWindow(xcb_window_t window)
     {
         xcb_ewmh_set_active_window(&ewmh, 0, window); // XXX: screen_nbr
+    }
+
+    void updateWorkarea()
+    {
+        import std.algorithm.comparison : max, min;
+        import std.algorithm.iteration : map;
+        import std.algorithm.searching : maxElement;
+
+        immutable screenWidth = screen.width_in_pixels;
+        immutable screenHeight = screen.height_in_pixels;
+
+        auto workarea = xcb_ewmh_geometry_t(0, 0, screenWidth, screenHeight);
+
+        if (!frames[].empty)
+        {
+            immutable left = frames[].map!"a.strut.left".maxElement;
+            immutable right = frames[].map!"a.strut.right".maxElement;
+            immutable top = frames[].map!"a.strut.top".maxElement;
+            immutable bottom = frames[].map!"a.strut.bottom".maxElement;
+
+            workarea.x = min(screenWidth - 1, left);
+            workarea.y = min(screenWidth - 1, top);
+            workarea.width = max(0, cast(int) screenWidth - cast(int)(left + right));
+            workarea.height = max(0, cast(int) screenHeight - cast(int)(top + bottom));
+        }
+
+        xcb_ewmh_set_workarea(&ewmh, 0, 1, &workarea); // XXX: screen_nbr
     }
 }
 
