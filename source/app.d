@@ -946,20 +946,7 @@ class Redbat
 
     void onMapRequest(xcb_map_request_event_t* event)
     {
-        auto reply = xcb_get_window_attributes_reply(connection, xcb_get_window_attributes(connection, event.window), null);
-        if (reply is null)
-        {
-            return;
-        }
-        scope (exit)
-        {
-            free(reply);
-        }
-
-        if (!reply.override_redirect)
-        {
-            applyFrame(event.window, false);
-        }
+        applyFrame(event.window, false);
     }
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
