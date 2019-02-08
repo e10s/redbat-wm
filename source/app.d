@@ -176,11 +176,11 @@ class Redbat
                 onButtonRelease(cast(xcb_button_release_event_t*) event);
                 break;
             case XCB_MOTION_NOTIFY:
-                infof("XCB_MOTION_NOTIFY %s", eventType);
+                false.infof("XCB_MOTION_NOTIFY %s", eventType);
                 onMotionNotify(cast(xcb_motion_notify_event_t*) event);
                 break;
             case XCB_ENTER_NOTIFY:
-                infof("XCB_ENTER_NOTIFY %s", eventType);
+                false.infof("XCB_ENTER_NOTIFY %s", eventType);
                 onEnterNotify(cast(xcb_enter_notify_event_t*) event);
                 break;
             case XCB_FOCUS_IN:
@@ -951,7 +951,7 @@ class Redbat
 
     void onConfigureRequest(xcb_configure_request_event_t* event)
     {
-        infof("pw = (%#x, %#x), xy = (%s, %s), wh = (%s, %s)", event.parent, event.window, event.x, event.y, event.width, event.height); // Needed to handle manually
+        infof("pw = (%#x, %#x)", event.parent, event.window);
         if (event.parent == root.window)
         {
             infof("ConfigReq from unmanaged client: %#x", event.window);
@@ -961,18 +961,22 @@ class Redbat
             if (event.value_mask & XCB_CONFIG_WINDOW_X)
             {
                 values ~= event.x;
+                infof("x = %s", event.x);
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_Y)
             {
                 values ~= event.y;
+                infof("y = %s", event.y);
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_WIDTH)
             {
                 values ~= event.width;
+                infof("w = %s", event.width);
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_HEIGHT)
             {
                 values ~= event.height;
+                infof("h = %s", event.height);
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_BORDER_WIDTH)
             {
@@ -985,6 +989,7 @@ class Redbat
             if (event.value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
             {
                 values ~= event.stack_mode;
+                infof("stack = %s", event.stack_mode);
             }
 
             xcb_configure_window(connection, event.window, event.value_mask, values.ptr);
@@ -1016,19 +1021,23 @@ class Redbat
             {
                 moved = newClientGeoByRoot.x != event.x;
                 newClientGeoByRoot.x = event.x;
+                infof("x = %s", event.x);
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_Y)
             {
                 moved = moved || newClientGeoByRoot.y != event.y;
                 newClientGeoByRoot.y = event.y;
+                infof("y= %s", event.y);
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_WIDTH)
             {
                 newClientGeoByRoot.width = event.width;
+                infof("w = %s", event.width);
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_HEIGHT)
             {
                 newClientGeoByRoot.height = event.height;
+                infof("h = %s", event.height);
             }
 
             // Set values in this order!!
@@ -1045,6 +1054,7 @@ class Redbat
             }
             if (event.value_mask & XCB_CONFIG_WINDOW_STACK_MODE)
             {
+                infof("stack = %s", event.stack_mode);
                 if (event.stack_mode == XCB_STACK_MODE_ABOVE)
                 {
                     raiseWindow(frame);
