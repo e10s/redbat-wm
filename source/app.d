@@ -960,7 +960,11 @@ class Redbat
     void onConfigureRequest(xcb_configure_request_event_t* event)
     {
         infof("pw = (%#x, %#x)", event.parent, event.window);
-        if (event.parent == root.window)
+        import std.algorithm.searching : find;
+
+        auto r = frames[].find!"a.client.window==b"(event.window);
+
+        if (r.empty)
         {
             infof("ConfigReq from unmanaged client: %#x", event.window);
             uint[] values;
@@ -1004,15 +1008,6 @@ class Redbat
         }
         else
         {
-            import std.algorithm.searching : find;
-
-            auto r = frames[].find!"a.window==b"(event.parent);
-
-            if (r.empty)
-            {
-                warningf("Configure request from unknown client %#x", event.window);
-                return;
-            }
             auto frame = r.front;
             auto oldFrameGeo = frame.geometry;
             auto newClientGeoByRoot = frame.client.geometry;
