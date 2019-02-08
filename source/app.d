@@ -946,6 +946,14 @@ class Redbat
 
     void onMapRequest(xcb_map_request_event_t* event)
     {
+        import std.algorithm.searching : canFind;
+
+        if (frames[].canFind!"a.client.window==b"(event.window))
+        {
+            warningf("%#x already has its frame!", event.window);
+            return;
+        }
+
         applyFrame(event.window, false);
     }
 
